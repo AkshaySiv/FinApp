@@ -72,12 +72,84 @@ class Repository(private val context: Context, val db: AppDatabase, val prefs: P
 
     enum class Outcome { TX, STATEMENT, REVIEW, IGNORED, DUPLICATE, NOT_ALLOWED }
 
-    /** Handles one SMS (from the inbox import or a live broadcast). Safe to call twice. */
-    suspend fun process(sender: String, body: String, timestamp: Long, notify: Boolean): Outcome = lock.withLock {
+    private fun tally(outcomes: List<Outcome>) = ImportResult(
+        read = outcomes.count { it != Outcome.DUPLICATE && it != Outcome.NOT_ALLOWED },
+        transactions = outcomes.count { it == Outcome.TX },
+        statements = outcomes.count { it == Outcome.STATEMENT },
+        review = outcomes.count { it == Outcome.REVIEW },
+    )
+
+    /**
+     * Messages you shared or pasted. There's no sender or arrival time, so the sender filter is
+     * skipped and the date comes from the message text (today if it has none). Blank lines
+     * separate messages when several are pasted at once.
+     */
+    suspend fun importText(text: String): ImportResult = withContext(Dispatchers.IO) {
+        val messages = text.replace("\r", "").split(Regex("\n\\s*\n")).map { it.trim() }.filter { it.length >= 10 }
+        tally(messages.map { body ->
+            val ts = SmsParser.findDateTime(body)?.atZone(zone)?.toInstant()?.toEpochMilli() ?: System.currentTimeMillis()
+            process("Shared", body, ts, notify = false, trusted = true)
+        })
+    }
+
+    /**
+     * Reads a backup file from SMS Backup & Restore (XML). Only received messages from your
+     * authorised senders are used; messages already recorded are skipped.
+     */
+    suspend fun importBackup(uri: Uri, alerts: Boolean = false): ImportResult = withContext(Dispatchers.IO) {
+        val filter = prefs.current.filter
+        val known = db.sms().keys().toHashSet()
+        val outcomes = mutableListOf<Outcome>()
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            val xp = android.util.Xml.newPullParser()
+            xp.setFeature(org.xmlpull.v1.XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
+            xp.setInput(input, null)
+            var ev = xp.eventType
+            while (ev != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                if (ev == org.xmlpull.v1.XmlPullParser.START_TAG && xp.name == "sms") {
+                    val type = xp.getAttributeValue(null, "type")
+                    val sender = xp.getAttributeValue(null, "address")
+                    val body = xp.getAttributeValue(null, "body")
+                    val ts = xp.getAttributeValue(null, "date")?.toLongOrNull()
+                    // type 1 = received; skip sent messages and drafts
+                    if (type == "1" && sender != null && body != null && ts != null &&
+                        filter.allows(sender, body) && keyOf(sender, body, ts) !in known) {
+                        outcomes += process(sender, body, ts, notify = false, alerts = alerts)
+                    }
+                }
+                ev = xp.next()
+            }
+        } ?: throw IllegalStateException("Couldn't open that file.")
+        tally(outcomes)
+    }
+
+    /**
+     * Checks the SMS Backup & Restore folder you picked and imports the newest backup if it's
+     * new since last time. Returns null when there's nothing to do.
+     */
+    suspend fun syncBackupFolder(alerts: Boolean): ImportResult? = withContext(Dispatchers.IO) {
         val s = prefs.current
-        if (!s.filter.allows(sender, body)) return Outcome.NOT_ALLOWED
-        val key = keyOf(sender, body, timestamp)
-        when (val r = SmsParser.parse(sender, body, s.filter)) {
+        if (s.backupFolder.isBlank()) return@withContext null
+        val dir = androidx.documentfile.provider.DocumentFile.fromTreeUri(context, Uri.parse(s.backupFolder))
+            ?: return@withContext null
+        val newest = dir.listFiles()
+            .filter { f -> f.isFile && (f.name ?: "").lowercase().let { it.endsWith(".xml") && !it.startsWith("calls") } }
+            .maxByOrNull { it.lastModified() }
+        prefs.update { it.copy(lastBackupCheck = System.currentTimeMillis()) }
+        if (newest == null || newest.lastModified() <= s.backupImportedAt) return@withContext null
+        val r = importBackup(newest.uri, alerts)
+        prefs.update { it.copy(backupImportedAt = newest.lastModified()) }
+        r
+    }
+
+    /** Handles one SMS (from the inbox import or a live broadcast). Safe to call twice. */
+    suspend fun process(sender: String, body: String, timestamp: Long, notify: Boolean,
+                        trusted: Boolean = false, alerts: Boolean = notify): Outcome = lock.withLock {
+        val s = prefs.current
+        if (!trusted && !s.filter.allows(sender, body)) return Outcome.NOT_ALLOWED
+        // Shared messages have no arrival time, so the same text always gets the same key.
+        val key = if (trusted) keyOf("shared", body, 0) else keyOf(sender, body, timestamp)
+        when (val r = SmsParser.parse(sender, body, s.filter, trusted)) {
             is ParseResult.Transaction -> {
                 if (db.sms().insert(SmsEntity(key, sender, body, timestamp, "PARSED")) == -1L) return Outcome.DUPLICATE
                 val tx = toEntity(r.tx, key, timestamp)
@@ -85,10 +157,8 @@ class Repository(private val context: Context, val db: AppDatabase, val prefs: P
                 db.sms().setStatus(key, "PARSED", id)
                 val saved = tx.copy(id = id)
                 afterTransaction(saved, r.tx)
-                if (notify) {
-                    if (s.notifyEachTransaction) Notifier.transaction(context, saved, s)
-                    if (s.notifyBudgets) checkBudget(saved.category)
-                }
+                if (notify && s.notifyEachTransaction) Notifier.transaction(context, saved, s)
+                if (alerts && s.notifyBudgets) checkBudget(saved.category)
                 Outcome.TX
             }
             is ParseResult.Statement -> {

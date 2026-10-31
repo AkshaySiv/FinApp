@@ -50,7 +50,7 @@ class DailyWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
     override suspend fun doWork(): Result {
         val app = applicationContext as CompoundApp
         val repo = app.repo
-        runCatching {
+        if (com.compound.finance.BuildConfig.SMS_ACCESS) runCatching {
             val since = (repo.db.sms().latest() ?: (System.currentTimeMillis() - Duration.ofDays(30).toMillis())) - Duration.ofDays(2).toMillis()
             repo.importInbox(since)
         }
@@ -73,6 +73,7 @@ class DailyWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
 
     companion object {
         fun schedule(context: Context) {
+            BackupSyncWorker.schedule(context)
             val now = LocalDateTime.now()
             var next = now.toLocalDate().atTime(9, 0)
             if (!next.isAfter(now)) next = next.plusDays(1)
@@ -81,6 +82,28 @@ class DailyWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
                 .setInitialDelay(delay)
                 .build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork("daily", ExistingPeriodicWorkPolicy.KEEP, req)
+        }
+    }
+}
+
+/**
+ * Every few hours: picks up the newest SMS Backup & Restore file from your chosen folder, so
+ * bank messages arrive in Compound without the app needing SMS permission.
+ */
+class BackupSyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        val repo = (applicationContext as CompoundApp).repo
+        val r = runCatching { repo.syncBackupFolder(alerts = true) }.getOrNull() ?: return Result.success()
+        if (r.transactions > 0 && repo.prefs.current.notifyEachTransaction) {
+            Notifier.imported(applicationContext, r.transactions, r.review)
+        }
+        return Result.success()
+    }
+
+    companion object {
+        fun schedule(context: Context) {
+            val req = PeriodicWorkRequestBuilder<BackupSyncWorker>(Duration.ofHours(3)).build()
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork("backup-sync", ExistingPeriodicWorkPolicy.KEEP, req)
         }
     }
 }

@@ -40,12 +40,28 @@ android {
         }
     }
 
+    // Two editions with the same app ID and key, so you can switch between them and keep your data:
+    //  phone: installs straight from the phone; no SMS permission (Play Protect blocks that for
+    //         sideloaded apps). Messages come in from an SMS backup app, Share, or paste.
+    //  sms:   reads the SMS inbox directly; install it from a computer over ADB.
+    flavorDimensions += "access"
+    productFlavors {
+        create("phone") {
+            dimension = "access"
+            buildConfigField("boolean", "SMS_ACCESS", "false")
+        }
+        create("sms") {
+            dimension = "access"
+            buildConfigField("boolean", "SMS_ACCESS", "true")
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
     testOptions { unitTests.isReturnDefaultValues = true }
 }
 
@@ -72,6 +88,7 @@ dependencies {
     ksp("androidx.room:room-compiler:2.6.1")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.biometric:biometric:1.1.0")
+    implementation("androidx.documentfile:documentfile:1.0.1")
 
     testImplementation("junit:junit:4.13.2")
 }

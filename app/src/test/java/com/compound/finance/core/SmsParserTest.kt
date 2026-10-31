@@ -106,6 +106,28 @@ class SmsParserTest {
         assertTrue(r is ParseResult.Ignored)
     }
 
+    // ---- shared / pasted messages ------------------------------------------------------
+
+    @Test fun shared_message_skips_sender_filter() {
+        val r = SmsParser.parse("Shared",
+            "AED10000.00 transferred via ADCB Personal Internet Banking / Mobile App from acc. no. XXX on Oct 31 2026 11:40AM. Avl. bal. AED 10038.58.",
+            SenderFilter(), trusted = true)
+        assertTrue(r is ParseResult.Transaction)
+        assertEquals("ADCB", (r as ParseResult.Transaction).tx.bank)
+    }
+
+    @Test fun dates_inside_messages() {
+        assertEquals(java.time.LocalDateTime.of(2026, 10, 31, 11, 40),
+            SmsParser.findDateTime("transferred from acc. no. XXX on Oct 31 2026 11:40AM. Avl. bal. AED 10038.58."))
+        assertEquals(java.time.LocalDateTime.of(2026, 10, 30, 21, 5),
+            SmsParser.findDateTime("used at TALABAT on 30/10/2026 09:05 PM. Avl bal AED 1,000.00"))
+        assertEquals(LocalDate.of(2026, 10, 25),
+            SmsParser.findDateTime("credited with AED 46,000.00 Salary on 25-Oct-2026. Available balance")?.toLocalDate())
+        assertEquals(LocalDate.of(2026, 10, 12),
+            SmsParser.findDateTime("Purchase of AED 12.00 on 2026-10-12 at NOON")?.toLocalDate())
+        assertNull(SmsParser.findDateTime("Purchase of AED 245.50 at CARREFOUR MARKET"))
+    }
+
     // ---- authorised senders ------------------------------------------------------------
 
     @Test fun unlisted_sender_is_ignored_by_default() {

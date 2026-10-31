@@ -24,7 +24,21 @@ data class Settings(
     val compoundUser: String = "",
     val compoundPassword: String = "",
     val onboarded: Boolean = false,
+    /** Folder where SMS Backup & Restore saves its backups (a content:// tree URI), or empty. */
+    val backupFolder: String = "",
+    val backupFolderName: String = "",
+    /** Last-modified time of the newest backup file already imported. */
+    val backupImportedAt: Long = 0,
+    val lastBackupCheck: Long = 0,
+    /** Categories you added yourself, on top of the built-in ones. */
+    val customCategories: List<String> = emptyList(),
 ) {
+    val spendingCategories: List<String> get() =
+        (com.compound.finance.core.Categories.spending.dropLast(1) + customCategories + com.compound.finance.core.Categories.UNCATEGORISED).distinct()
+    val incomeCategories: List<String> get() = com.compound.finance.core.Categories.income
+    val allCategories: List<String> get() =
+        (spendingCategories + incomeCategories + com.compound.finance.core.Categories.CARD_PAYMENT).distinct()
+
     val filter: SenderFilter get() = SenderFilter(senders, onlyListedSenders, keywords)
 
     /** Converts to the main currency; unknown currencies are returned unconverted. */
@@ -76,6 +90,11 @@ class Prefs(context: Context) {
             compoundUser = sp.getString("compoundUser", "")!!,
             compoundPassword = sp.getString("compoundPassword", "")!!,
             onboarded = sp.getBoolean("onboarded", false),
+            backupFolder = sp.getString("backupFolder", "")!!,
+            backupFolderName = sp.getString("backupFolderName", "")!!,
+            backupImportedAt = sp.getLong("backupImportedAt", 0),
+            lastBackupCheck = sp.getLong("lastBackupCheck", 0),
+            customCategories = list("customCategories", emptyList()),
         )
     }
 
@@ -95,6 +114,11 @@ class Prefs(context: Context) {
             .putString("compoundUser", s.compoundUser)
             .putString("compoundPassword", s.compoundPassword)
             .putBoolean("onboarded", s.onboarded)
+            .putString("backupFolder", s.backupFolder)
+            .putString("backupFolderName", s.backupFolderName)
+            .putLong("backupImportedAt", s.backupImportedAt)
+            .putLong("lastBackupCheck", s.lastBackupCheck)
+            .putString("customCategories", s.customCategories.joinToString("\n"))
             .apply()
     }
 

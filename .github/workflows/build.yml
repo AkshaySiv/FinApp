@@ -38,13 +38,17 @@ jobs:
           fi
 
       - name: Unit tests
-        run: gradle --no-daemon :app:testReleaseUnitTest
+        run: gradle --no-daemon :app:testPhoneReleaseUnitTest
 
-      - name: Build APK
-        run: gradle --no-daemon :app:assembleRelease
+      - name: Build APKs
+        run: gradle --no-daemon :app:assemblePhoneRelease :app:assembleSmsRelease
 
-      - name: Rename APK
-        run: cp app/build/outputs/apk/release/app-release.apk "Compound-1.0.${GITHUB_RUN_NUMBER}.apk"
+      - name: Rename APKs
+        # Compound-x.apk installs straight from the phone; the -sms edition reads the inbox
+        # directly but must be installed from a computer over ADB.
+        run: |
+          cp app/build/outputs/apk/phone/release/app-phone-release.apk "Compound-1.0.${GITHUB_RUN_NUMBER}.apk"
+          cp app/build/outputs/apk/sms/release/app-sms-release.apk "Compound-sms-1.0.${GITHUB_RUN_NUMBER}.apk"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -57,7 +61,10 @@ jobs:
         with:
           tag_name: v1.0.${{ github.run_number }}
           name: Compound 1.0.${{ github.run_number }}
-          body: "Download the APK below on your phone and open it to install or update."
+          body: |
+            **Compound-1.0.${{ github.run_number }}.apk**: download on your phone and open it to install or update. Bank SMS come in through SMS Backup & Restore, Share, or paste.
+
+            **Compound-sms-1.0.${{ github.run_number }}.apk**: reads your SMS inbox directly. Play Protect blocks installing it from the phone, so install it from a computer with `./scripts/install.sh --sms`.
           files: Compound-*.apk
 
       - name: Test report

@@ -112,7 +112,7 @@ fun SettingsScreen(vm: MainViewModel) {
         SectionTitle("Which messages to read")
         Panel {
             Text("Authorised senders", style = MaterialTheme.typography.titleSmall)
-            Muted("One per line. Use the sender name exactly as your messages app shows it (e.g. ADCBAlert, EmiratesNBD), or a phone number. Every other message is skipped and never stored.")
+            Muted("One per line. Use the sender name exactly as your messages app shows it (e.g. ADCBAlert, EmiratesNBD), or a phone number. Every other message is skipped and never stored. Messages you share or paste yourself are always read.")
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(senders, { senders = it }, modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp), label = { Text("Senders") })
             SwitchRow("Only read these senders", "Turn off to also read other senders that look like UAE banks", s.onlyListedSenders) { v ->
@@ -129,14 +129,21 @@ fun SettingsScreen(vm: MainViewModel) {
             }) { Text("Save filter") }
         }
 
-        SectionTitle("Read past messages")
-        Panel {
-            Muted("Goes through your inbox for the period you pick. Messages already recorded are skipped. $txCount transactions recorded so far.")
-            Spacer(Modifier.height(8.dp))
-            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(1L, 3L, 6L, 12L).forEach { m -> OutlinedButton(onClick = { vm.importInbox(m) }) { Text(if (m == 1L) "1 month" else "$m months") } }
+        if (com.compound.finance.BuildConfig.SMS_ACCESS) {
+            SectionTitle("Read past messages")
+            Panel {
+                Muted("Goes through your inbox for the period you pick. Messages already recorded are skipped. $txCount transactions recorded so far.")
+                Spacer(Modifier.height(8.dp))
+                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(1L, 3L, 6L, 12L).forEach { m -> OutlinedButton(onClick = { vm.importInbox(m) }) { Text(if (m == 1L) "1 month" else "$m months") } }
+                }
             }
+        } else {
+            SectionTitle("Getting your bank messages in")
+            ImportPanel(vm, compact = true)
+            Spacer(Modifier.height(4.dp))
+            Muted("$txCount transactions recorded so far.")
         }
 
         SectionTitle("Currencies")

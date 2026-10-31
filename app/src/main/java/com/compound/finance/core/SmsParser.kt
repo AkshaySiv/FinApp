@@ -62,8 +62,12 @@ object SmsParser {
         return defaultBankSenders.any { frag -> s.contains(frag.replace(" ", "")) }
     }
 
-    fun parse(sender: String, body: String, filter: SenderFilter = SenderFilter()): ParseResult {
-        if (!filter.allows(sender, body)) return ParseResult.Ignored("sender not authorised")
+    /**
+     * @param trusted true for messages you shared or pasted yourself: there's no sender to check,
+     *                so the authorised-sender filter is skipped.
+     */
+    fun parse(sender: String, body: String, filter: SenderFilter = SenderFilter(), trusted: Boolean = false): ParseResult {
+        if (!trusted && !filter.allows(sender, body)) return ParseResult.Ignored("sender not authorised")
         val text = body.replace('\n', ' ').replace(Regex("\\s+"), " ").trim()
         val low = text.lowercase(Locale.ROOT)
         val amounts = findAmounts(text)
@@ -217,6 +221,56 @@ object SmsParser {
             else ParseResult.Unrecognized(a.value, a.currency)
         }
         return ParseResult.Statement(CardStatement(bank, account, totalV, minV, ccy, due))
+    }
+
+    // ---------------------------------------------------------------- dates inside the text
+
+    private val monthNames = listOf("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+    private val timeRe = Regex("""(?i)\b(\d{1,2}):(\d{2})(?::\d{2})?\s*([AP]M)?""")
+    private val dateRes = listOf(
+        // Oct 31 2026 / October 31, 2026
+        Regex("""(?i)\b([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})\b""") to "MDY",
+        // 31 Oct 2026 / 31-Oct-26 / 31OCT2026
+        Regex("""(?i)\b(\d{1,2})[\s\-/]?([A-Za-z]{3,9})[\s\-/,]*(\d{4}|\d{2})\b""") to "DMY_NAME",
+        // 2026-10-31
+        Regex("""\b(\d{4})-(\d{2})-(\d{2})\b""") to "ISO",
+        // 31/10/2026, 31-10-26, 31.10.2026 (day first, as UAE banks write it)
+        Regex("""\b(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4}|\d{2})\b""") to "DMY",
+    )
+
+    private fun month(name: String): Int? =
+        monthNames.indexOf(name.lowercase(Locale.ROOT).take(3)).takeIf { it >= 0 }?.plus(1)
+
+    private fun year(y: String): Int = y.toInt().let { if (it < 100) 2000 + it else it }
+
+    /** The transaction date and time written in the message, if any (used for shared and pasted messages). */
+    fun findDateTime(text: String): java.time.LocalDateTime? {
+        var date: LocalDate? = null
+        var end = -1
+        search@ for ((re, kind) in dateRes) for (m in re.findAll(text)) {
+            val g = m.groupValues
+            date = runCatching {
+                when (kind) {
+                    "MDY" -> LocalDate.of(year(g[3]), month(g[1]) ?: error("month"), g[2].toInt())
+                    "DMY_NAME" -> LocalDate.of(year(g[3]), month(g[2]) ?: error("month"), g[1].toInt())
+                    "ISO" -> LocalDate.of(g[1].toInt(), g[2].toInt(), g[3].toInt())
+                    else -> LocalDate.of(year(g[3]), g[2].toInt(), g[1].toInt())
+                }
+            }.getOrNull()
+            if (date != null && date.year in 2000..2100) { end = m.range.last; break@search }
+            date = null
+        }
+        if (date == null) return null
+        val t = timeRe.find(text, maxOf(0, end - 2)) ?: timeRe.find(text)
+        var hour = 12; var minute = 0
+        if (t != null) {
+            hour = t.groupValues[1].toInt(); minute = t.groupValues[2].toInt()
+            val ampm = t.groupValues[3].uppercase(Locale.ROOT)
+            if (ampm == "PM" && hour < 12) hour += 12
+            if (ampm == "AM" && hour == 12) hour = 0
+            if (hour > 23 || minute > 59) { hour = 12; minute = 0 }
+        }
+        return date.atTime(hour, minute)
     }
 
     private val dateFormats = listOf(

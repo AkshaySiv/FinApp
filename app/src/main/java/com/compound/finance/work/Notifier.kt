@@ -72,6 +72,12 @@ object Notifier {
             "budgets")
     }
 
+    fun imported(context: Context, transactions: Int, review: Int) =
+        post(context, "imported".hashCode(), CH_TX,
+            "$transactions new transaction${if (transactions > 1) "s" else ""} recorded",
+            "From your latest SMS backup." + if (review > 0) " $review message${if (review > 1) "s" else ""} need a look." else "",
+            "spending")
+
     fun due(context: Context, title: String, text: String, key: String) =
         post(context, ("due$key").hashCode(), CH_ALERTS, title, text, "dues")
 }

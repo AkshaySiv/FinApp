@@ -71,6 +71,60 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 .collectLatest { refreshDerived() }
         }
         if (settings.value.compoundUrl.isNotBlank()) refreshNetWorth(quiet = true)
+        // Pick up new backups when the app opens, not only on the background schedule.
+        if (settings.value.backupFolder.isNotBlank()) viewModelScope.launch {
+            runCatching { repo.syncBackupFolder(alerts = true) }.getOrNull()?.let { r ->
+                if (r.transactions > 0) say("${r.transactions} new transaction${if (r.transactions > 1) "s" else ""} from your SMS backup")
+            }
+        }
+    }
+
+    private fun summary(r: Repository.ImportResult, none: String) =
+        if (r.read == 0) none
+        else "${r.transactions} transaction${if (r.transactions == 1) "" else "s"}" +
+            (if (r.statements > 0) ", ${r.statements} card statement${if (r.statements == 1) "" else "s"}" else "") +
+            (if (r.review > 0) ", ${r.review} to review" else "") + " from ${r.read} message${if (r.read == 1) "" else "s"}."
+
+    /** Text shared from the Messages app or pasted in. */
+    fun importText(text: String) = viewModelScope.launch {
+        busy.value = true
+        try {
+            val r = repo.importText(text)
+            repo.prefs.update { it.copy(onboarded = true) }
+            say(summary(r, "Already recorded, or not a bank transaction."))
+            if (r.transactions > 0) tab.value = "spending"
+            else if (r.review > 0) tab.value = "review"
+        } catch (e: Exception) { say("Couldn't read that: ${e.message}") }
+        finally { busy.value = false }
+    }
+
+    /** A one-off SMS Backup & Restore file. */
+    fun importBackupFile(uri: android.net.Uri) = viewModelScope.launch {
+        busy.value = true
+        try {
+            val r = repo.importBackup(uri)
+            repo.prefs.update { it.copy(onboarded = true) }
+            say(summary(r, "No new messages from your authorised senders in that file."))
+        } catch (e: Exception) { say("Couldn't read that file: ${e.message}") }
+        finally { busy.value = false }
+    }
+
+    /** The folder SMS Backup & Restore saves to; checked every few hours. */
+    fun setBackupFolder(uri: android.net.Uri, name: String) = viewModelScope.launch {
+        repo.prefs.update { it.copy(backupFolder = uri.toString(), backupFolderName = name, backupImportedAt = 0, onboarded = true) }
+        syncBackupNow()
+    }
+
+    fun clearBackupFolder() = repo.prefs.update { it.copy(backupFolder = "", backupFolderName = "", backupImportedAt = 0) }
+
+    fun syncBackupNow() = viewModelScope.launch {
+        busy.value = true
+        try {
+            val r = repo.syncBackupFolder(alerts = false)
+            say(if (r == null) "No new backup in the folder yet. Run a backup in SMS Backup & Restore, then try again."
+                else summary(r, "The newest backup has nothing new from your authorised senders."))
+        } catch (e: Exception) { say("Couldn't read the folder: ${e.message}") }
+        finally { busy.value = false }
     }
 
     private suspend fun refreshDerived() {

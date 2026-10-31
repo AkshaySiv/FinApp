@@ -75,7 +75,15 @@ fun HomeScreen(vm: MainViewModel) {
         .mapValues { (_, l) -> l.sumOf { s.toMain(it.amount, it.currency) } }.entries.sortedByDescending { it.value }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
-        if (!granted) {
+        if (!com.compound.finance.BuildConfig.SMS_ACCESS) {
+            // Phone edition: messages come from a backup folder, Share or paste.
+            if (s.backupFolder.isBlank() && txs.isEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                Text("Bring in your bank messages", style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(8.dp))
+                ImportPanel(vm)
+            }
+        } else if (!granted) {
             Spacer(Modifier.height(16.dp))
             Panel {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -196,7 +204,7 @@ fun HomeScreen(vm: MainViewModel) {
                 }
             }
         }
-        if (granted && s.onboarded && txs.isEmpty()) {
+        if ((granted || s.backupFolder.isNotBlank()) && s.onboarded && txs.isEmpty()) {
             EmptyState("No transactions yet",
                 "Nothing matched your authorised senders. Check the sender names in Settings match exactly what your phone shows.",
                 "Open settings") { vm.tab.value = "more" }

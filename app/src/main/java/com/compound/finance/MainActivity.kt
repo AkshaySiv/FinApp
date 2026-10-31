@@ -52,7 +52,13 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        intent?.getStringExtra("tab")?.let { vm.tab.value = it }
+        intent ?: return
+        intent.getStringExtra("tab")?.let { vm.tab.value = it }
+        // A bank SMS shared from the Messages app.
+        if (intent.action == Intent.ACTION_SEND && intent.type?.startsWith("text/") == true) {
+            intent.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { it.isNotBlank() }?.let { vm.importText(it) }
+            intent.action = null   // don't import again on rotation
+        }
     }
 
     override fun onStop() {
