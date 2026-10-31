@@ -4,13 +4,19 @@ A private finance app that reads your bank SMS on the phone, sorts spending into
 
 ## Install
 
-1. On your phone, open this repository's **Releases** page and download the latest `Compound-1.0.x.apk`.
-2. Open it. Android asks to allow installs from your browser or Files app; allow it once.
-3. Open Compound and tap **Allow SMS access**.
-   - On Android 13 and newer, sideloaded apps can't request SMS access until you allow it. If no prompt appears, open **Settings → Apps → Compound**, tap **⋮** (top right), choose **Allow restricted settings**, confirm, and try again.
-4. Choose how many months of past messages to read.
+Google Play Protect blocks apps that read SMS when they're installed from a browser or file manager, so install from a computer over USB instead (ADB installs aren't blocked):
 
-Updates: download the newer APK and install it over the old one. Your data is kept, because every release is signed with the same key.
+1. On the phone: **Settings → About phone**, tap **Build number** seven times, then **Settings → System → Developer options → USB debugging** on.
+2. On a Mac: `brew install android-platform-tools`
+3. Plug the phone in, accept the "Allow USB debugging?" prompt, then run:
+   ```bash
+   ./scripts/install.sh
+   ```
+4. Open Compound, tap **Allow SMS access**, and choose how many months of past messages to read.
+
+Updates: run `./scripts/install.sh` again. Your data is kept, because every release is signed with the same key. You can switch USB debugging off between installs.
+
+No cable? Use **Developer options → Wireless debugging → Pair device with pairing code**, then on the Mac run `adb pair <ip:port>` with the code, `adb connect <ip:port>`, and the script.
 
 ## Which messages it reads
 
