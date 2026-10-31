@@ -157,6 +157,36 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         repo.setCategory(tx, category, all)
         say(if (all && tx.merchantKey.isNotBlank()) "${tx.merchant ?: "This merchant"} will always be $category" else "Category changed")
     }
+    fun split(tx: TxEntity, parts: List<Pair<Double, String>>) = viewModelScope.launch {
+        try { repo.split(tx, parts); say("Split into ${parts.size + 1} parts") }
+        catch (e: Exception) { say(e.message ?: "Couldn't split") }
+    }
+
+    fun importCsv(uri: android.net.Uri) = viewModelScope.launch {
+        busy.value = true
+        try {
+            val r = repo.importCsv(uri)
+            say(r.problem ?: buildString {
+                append("Added ${r.added} transaction${if (r.added == 1) "" else "s"}")
+                if (r.duplicates > 0) append(", ${r.duplicates} already there")
+                if (r.skipped > 0) append(", ${r.skipped} lines skipped")
+                append(".")
+            })
+            if (r.added > 0) tab.value = "spending"
+        } catch (e: Exception) { say("Couldn't import: ${e.message}") }
+        finally { busy.value = false }
+    }
+
+    fun addCategory(name: String) {
+        val n = name.trim().replaceFirstChar { it.uppercase() }
+        if (n.isBlank()) return
+        if (settings.value.allCategories.any { it.equals(n, true) }) { say("$n already exists"); return }
+        updateSettings { it.copy(customCategories = it.customCategories + n) }
+        say("Added $n")
+    }
+
+    fun removeCategory(name: String) = updateSettings { it.copy(customCategories = it.customCategories - name) }
+
     fun updateTx(tx: TxEntity) = viewModelScope.launch { repo.updateTx(tx) }
     fun deleteTx(tx: TxEntity) = viewModelScope.launch { repo.deleteTx(tx); say("Transaction deleted") }
     fun addManual(date: LocalDate, amount: Double, ccy: String, dir: Direction, merchant: String, category: String, note: String) =

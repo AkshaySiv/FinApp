@@ -276,11 +276,10 @@ object SmsParser {
     private val dateFormats = listOf(
         "d/M/yyyy", "d/M/yy", "d-M-yyyy", "d-M-yy", "d.M.yyyy", "d MMM yyyy", "d-MMM-yyyy", "d-MMM-yy",
         "d/MMM/yyyy", "d MMM yy", "dd MMM yyyy", "MMM d yyyy", "MMM d, yyyy", "MMMM d, yyyy", "d MMMM yyyy",
-    ).map { DateTimeFormatter.ofPattern(it, Locale.ENGLISH) }
+    ).map { java.time.format.DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern(it).toFormatter(Locale.ENGLISH) }
 
     fun parseDate(raw: String): LocalDate? {
         val s = raw.trim().trimEnd('.', ',').replace(Regex("\\s+"), " ")
-            .split(" ").joinToString(" ") { w -> w.lowercase(Locale.ROOT).replaceFirstChar { it.titlecase(Locale.ROOT) } }
         for (f in dateFormats) {
             try { return LocalDate.parse(s, f) } catch (_: Exception) { }
         }

@@ -89,6 +89,11 @@ class SmsParserTest {
         assertEquals("4321", s.account)
     }
 
+    @Test fun due_date_with_month_name() {
+        assertEquals(LocalDate.of(2026, 11, 25), SmsParser.parseDate("25-NOV-2026"))
+        assertEquals(LocalDate.of(2026, 11, 25), SmsParser.parseDate("25 Nov 2026"))
+    }
+
     // ---- things that must be ignored -------------------------------------------------
 
     @Test fun otp_is_ignored() {

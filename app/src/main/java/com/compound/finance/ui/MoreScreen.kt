@@ -72,7 +72,7 @@ private fun ReviewAddDialog(vm: MainViewModel, m: SmsEntity, onDone: () -> Unit)
                     InputField(ccy, { ccy = it.uppercase().take(4) }, "Currency", Modifier.width(100.dp))
                 }
                 InputField(merchant, { merchant = it }, "Merchant")
-                ChoiceField("Category", category, Categories.all, { category = it })
+                ChoiceField("Category", category, s.allCategories, { category = it })
             }
         },
         confirmButton = {
@@ -102,6 +102,9 @@ fun SettingsScreen(vm: MainViewModel) {
     var second by remember(s.secondCurrency) { mutableStateOf(s.secondCurrency) }
     var rates by remember(s.rates) { mutableStateOf(s.rates.entries.sortedBy { it.key }.joinToString("\n") { "${it.key} ${it.value}" }) }
     var confirmWipe by remember { mutableStateOf(false) }
+    var newCategory by remember { mutableStateOf("") }
+    val csvPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) vm.importCsv(uri) }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 32.dp)) {
         if (reviewCount > 0) {
@@ -144,6 +147,27 @@ fun SettingsScreen(vm: MainViewModel) {
             ImportPanel(vm, compact = true)
             Spacer(Modifier.height(4.dp))
             Muted("$txCount transactions recorded so far.")
+        }
+
+        SectionTitle("Categories")
+        Panel {
+            Muted("Built in: ${com.compound.finance.core.Categories.spending.dropLast(1).joinToString(", ")}.")
+            if (s.customCategories.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Text("Yours", style = MaterialTheme.typography.titleSmall)
+                s.customCategories.forEach { c ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(c, Modifier.weight(1f))
+                        TextButton(onClick = { vm.removeCategory(c) }) { Text("Remove") }
+                    }
+                }
+                Muted("Removing a category keeps its past transactions as they are.")
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                InputField(newCategory, { newCategory = it }, "New category, e.g. Kids", Modifier.weight(1f))
+                Button(onClick = { vm.addCategory(newCategory); newCategory = "" }, enabled = newCategory.isNotBlank()) { Text("Add") }
+            }
         }
 
         SectionTitle("Currencies")
@@ -202,6 +226,12 @@ fun SettingsScreen(vm: MainViewModel) {
 
         SectionTitle("Your data")
         Panel {
+            Text("Import a bank statement", style = MaterialTheme.typography.titleSmall)
+            Muted("For older months or accounts that don't text you: export a statement as CSV from your bank's website or app. Columns are found by name (Date, Description, Amount or Debit/Credit). Importing the same file twice adds nothing.")
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = { csvPicker.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain", "application/vnd.ms-excel", "*/*")) },
+                enabled = !busy) { Text("Import CSV statement") }
+            HorizontalDivider(Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outline)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { vm.exportCsv(context) }) { Text("Export CSV") }
                 TextButton(onClick = { confirmWipe = true }) { Text("Delete all data", color = MaterialTheme.colorScheme.error) }

@@ -337,6 +337,7 @@ private fun BillsTab(vm: MainViewModel) {
 
 @Composable
 private fun BillEditor(vm: MainViewModel, b: BillEntity, onDone: () -> Unit) {
+    val s by vm.settings.collectAsStateWithLifecycle()
     var name by remember { mutableStateOf(b.name) }
     var amount by remember { mutableStateOf(if (b.amount > 0) "%.2f".format(b.amount) else "") }
     var ccy by remember { mutableStateOf(b.currency) }
@@ -358,7 +359,7 @@ private fun BillEditor(vm: MainViewModel, b: BillEntity, onDone: () -> Unit) {
             }
             ChoiceField("How often", freq.label, Frequency.entries.map { it.label }, { l -> freq = Frequency.entries.first { it.label == l } })
             DateField("Next due", due, { due = it })
-            ChoiceField("Category", category, Categories.spending, { category = it })
+            ChoiceField("Category", category, s.spendingCategories, { category = it })
             InputField(match, { match = it }, "Merchant name in the SMS (optional)")
             Muted("A debit SMS from this merchant marks the bill paid and moves it to the next date.")
             SwitchRow("Subscription", null, sub) { sub = it }

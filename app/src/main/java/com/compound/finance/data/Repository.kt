@@ -299,6 +299,47 @@ class Repository(private val context: Context, val db: AppDatabase, val prefs: P
         if (merchant.isNotBlank()) db.rules().upsert(RuleEntity(pattern = Categorizer.normalize(merchant), category = category))
     }
 
+    /** Splits one transaction across categories; the remainder stays on the original. */
+    suspend fun split(tx: TxEntity, parts: List<Pair<Double, String>>) {
+        val total = parts.sumOf { it.first }
+        require(parts.isNotEmpty() && parts.all { it.first > 0 } && total < tx.amount - 0.001) {
+            "The parts must add up to less than ${"%,.2f".format(tx.amount)}."
+        }
+        db.tx().update(tx.copy(amount = tx.amount - total))
+        for ((amount, category) in parts) {
+            db.tx().insert(tx.copy(id = 0, smsKey = null, amount = amount, category = category, source = "SPLIT",
+                balanceAfter = null, syncedToCompound = false,
+                note = listOf("Split from ${tx.merchant ?: "a transaction"}", tx.note).filter { it.isNotBlank() }.joinToString(" · ")))
+        }
+    }
+
+    data class CsvResult(val added: Int, val duplicates: Int, val skipped: Int, val problem: String?)
+
+    /** Imports a bank or card statement exported as CSV. Re-importing the same file adds nothing. */
+    suspend fun importCsv(uri: Uri): CsvResult = withContext(Dispatchers.IO) {
+        val text = context.contentResolver.openInputStream(uri)?.use { it.bufferedReader().readText() }
+            ?: throw IllegalStateException("Couldn't open that file.")
+        val parsed = com.compound.finance.core.CsvImport.parse(text)
+        if (parsed.rows.isEmpty()) return@withContext CsvResult(0, 0, parsed.skipped, parsed.problem)
+        val cat = categorizer()
+        val main = prefs.current.mainCurrency
+        var added = 0; var dups = 0
+        for (r in parsed.rows) {
+            val key = "csv:" + keyOf(r.description, "${r.date}|${r.amount}|${r.direction}", 0)
+            val kind = if (r.direction == Direction.DEBIT) TxKind.PURCHASE else TxKind.OTHER
+            val tx = TxEntity(
+                smsKey = key, timestamp = r.date.atTime(12, 0).atZone(zone).toInstant().toEpochMilli(),
+                amount = r.amount, currency = r.currency ?: main, direction = r.direction.name, kind = kind.name,
+                merchant = r.description, merchantKey = Categorizer.normalize(r.description),
+                category = cat.categorize(r.description, kind, r.direction),
+                bank = null, account = null, balanceAfter = null, source = "CSV",
+            )
+            val id = db.tx().insert(tx)
+            if (id == -1L) dups++ else { added++; afterTransaction(tx.copy(id = id), null) }
+        }
+        CsvResult(added, dups, parsed.skipped, null)
+    }
+
     suspend fun dismissReview(sms: SmsEntity) = db.sms().setStatus(sms.key, "DISMISSED", null)
     suspend fun dismissSender(sender: String) = db.sms().dismissSender(sender)
 

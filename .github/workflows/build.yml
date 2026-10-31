@@ -38,10 +38,10 @@ jobs:
           fi
 
       - name: Unit tests
-        run: gradle --no-daemon :app:testPhoneReleaseUnitTest
+        run: gradle --no-daemon :app:testPhoneReleaseUnitTest 2>&1 | tee -a build.log; exit ${PIPESTATUS[0]}
 
       - name: Build APKs
-        run: gradle --no-daemon :app:assemblePhoneRelease :app:assembleSmsRelease
+        run: gradle --no-daemon :app:assemblePhoneRelease :app:assembleSmsRelease 2>&1 | tee -a build.log; exit ${PIPESTATUS[0]}
 
       - name: Rename APKs
         # Compound-x.apk installs straight from the phone; the -sms edition reads the inbox
@@ -66,6 +66,18 @@ jobs:
 
             **Compound-sms-1.0.${{ github.run_number }}.apk**: reads your SMS inbox directly. Play Protect blocks installing it from the phone, so install it from a computer with `./scripts/install.sh --sms`.
           files: Compound-*.apk
+
+      - name: Report errors
+        if: failure()
+        # Compiler errors and failed tests become annotations on the run.
+        run: |
+          grep -E "^e: |FAILED|AssertionError|expected:<" build.log | head -40 | while IFS= read -r line; do
+            echo "::error::${line//file:\/\/$GITHUB_WORKSPACE\//}"
+          done
+          for f in app/build/test-results/*/*.xml; do
+            [ -f "$f" ] && grep -o 'testcase name="[^"]*"[^>]*>\s*<failure message="[^"]*' "$f" | head -10 | while IFS= read -r l; do echo "::error::$l"; done
+          done
+          true
 
       - name: Test report
         if: failure()

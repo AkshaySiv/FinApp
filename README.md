@@ -2,6 +2,15 @@
 
 A private finance app that reads your bank SMS on the phone, sorts spending into categories, tracks budgets, loans, EMIs, credit card dues, bills and subscriptions, and optionally syncs with your Compound server. No cloud service and no AI API: everything runs on the phone.
 
+## Editions
+
+| File | Install | How bank SMS get in |
+|---|---|---|
+| `Compound-1.0.x.apk` | Download on the phone and open it | SMS Backup & Restore folder (automatic, every few hours), Share from Messages, paste, or CSV statement |
+| `Compound-sms-1.0.x.apk` | From a computer: `./scripts/install.sh --sms` | Reads the SMS inbox directly and records each message as it arrives |
+
+Both use the same app ID and signing key, so you can switch editions without losing data.
+
 ## Install
 
 Google Play Protect blocks apps that read SMS when they're installed from a browser or file manager, so install from a computer over USB instead (ADB installs aren't blocked):
@@ -38,6 +47,10 @@ Everything else is skipped and never stored. One-time passwords from authorised 
 | Loans & EMIs | Outstanding balance, months left, interest still to pay, payoff date, a "pay extra" calculator, and which loan to prepay first. EMI SMS mark the instalment paid. |
 | Credit cards | Created automatically from statement and payment-due SMS: total and minimum due, due date, utilisation. Payment SMS clear the due. |
 | Bills & subscriptions | Recurring charges detected from your SMS, yearly cost, price-rise and double-charge warnings, reminders before each due date. |
+| Reports | Six-month spending vs income, this month by category against your usual, top merchants, per-day average. |
+| Search & split | Search six months of transactions; split one payment across several categories. |
+| Your categories | Add your own categories alongside the built-in ones. |
+| Statement import | CSV exports from any bank: columns are found by name; re-importing adds nothing twice. |
 | Compound sync | Optional: shows net worth from your Compound server and sends it your income and spending. |
 
 ## Build

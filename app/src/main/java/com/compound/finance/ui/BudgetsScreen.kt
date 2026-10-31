@@ -35,7 +35,7 @@ fun BudgetsScreen(vm: MainViewModel) {
     fun average(cat: String) = (1L..3L).map { spentIn(cat, ym.minusMonths(it)) }.average()
 
     val budgeted = budgets.map { it.category }.toSet()
-    val unbudgeted = Categories.spending.filter { it !in budgeted && it !in Categories.notSpending }
+    val unbudgeted = s.spendingCategories.filter { it !in budgeted && it !in Categories.notSpending }
         .map { it to average(it) }.filter { it.second > 0 }.sortedByDescending { it.second }
     val totalLimit = budgets.sumOf { it.monthlyLimit }
     val totalSpent = budgets.sumOf { spentIn(it.category, ym) }
@@ -100,14 +100,14 @@ fun BudgetsScreen(vm: MainViewModel) {
     }
 
     editing?.let { (cat, limit) ->
-        var category by remember(cat) { mutableStateOf(cat.ifEmpty { Categories.spending.firstOrNull { it !in budgeted && it !in Categories.notSpending } ?: "Groceries" }) }
+        var category by remember(cat) { mutableStateOf(cat.ifEmpty { s.spendingCategories.firstOrNull { it !in budgeted && it !in Categories.notSpending } ?: "Groceries" }) }
         var amount by remember(cat) { mutableStateOf(if (limit > 0) "%.0f".format(limit) else "") }
         AlertDialog(
             onDismissRequest = { editing = null },
             title = { Text(if (cat.isEmpty()) "Add a budget" else "$cat budget") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    if (cat.isEmpty()) ChoiceField("Category", category, Categories.spending.filter { it !in Categories.notSpending }, { category = it })
+                    if (cat.isEmpty()) ChoiceField("Category", category, s.spendingCategories.filter { it !in Categories.notSpending }, { category = it })
                     NumberField(amount, { amount = it }, "Monthly limit (${s.mainCurrency})")
                     val avg = average(category)
                     if (avg > 0) Muted("You've averaged ${money(avg, s.mainCurrency, decimals = false)} a month.")

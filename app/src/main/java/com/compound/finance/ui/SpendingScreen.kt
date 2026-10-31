@@ -13,6 +13,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,8 +40,19 @@ fun SpendingScreen(vm: MainViewModel) {
     var category by remember { mutableStateOf<String?>(null) }
     var editing by remember { mutableStateOf<TxEntity?>(null) }
     var adding by remember { mutableStateOf(false) }
+    var view by remember { mutableStateOf("Transactions") }
+    var query by remember { mutableStateOf("") }
+    val recent by vm.recentTx.collectAsStateWithLifecycle()
+    val searching = query.isNotBlank()
 
-    val shown = txs.filter {
+    val shown = if (searching) {
+        // Search covers the last six months: merchant, note, category, bank or amount.
+        val q = query.trim().lowercase()
+        recent.filter { t ->
+            listOfNotNull(t.merchant, t.note, t.category, t.bank).any { it.lowercase().contains(q) } ||
+                (q.any(Char::isDigit) && "%.2f".format(t.amount).startsWith(q.removePrefix("aed").trim().replace(",", "")))
+        }.sortedByDescending { it.timestamp }
+    } else txs.filter {
         when (filter) {
             "Spending" -> vm.repo.isSpending(it)
             "Income" -> vm.repo.isIncome(it)
@@ -69,11 +82,25 @@ fun SpendingScreen(vm: MainViewModel) {
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Transactions", "Reports").forEach { v ->
+                        FilterChip(selected = view == v, onClick = { view = v }, label = { Text(v) })
+                    }
+                }
+                if (view == "Transactions") {
+                    OutlinedTextField(query, { query = it }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        placeholder = { Text("Search merchant, category, note or amount") },
+                        leadingIcon = { Icon(Icons.Outlined.Search, null) },
+                        trailingIcon = { if (searching) IconButton(onClick = { query = "" }) { Icon(Icons.Outlined.Close, "Clear search") } })
+                }
+                if (searching) {
+                    Spacer(Modifier.height(8.dp))
+                    Muted("${shown.size} result${if (shown.size == 1) "" else "s"} in the last six months")
+                } else if (view == "Transactions") Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("Spending", "Income", "All").forEach { f ->
                         FilterChip(selected = filter == f, onClick = { filter = f; category = null }, label = { Text(f) })
                     }
                 }
-                if (cats.isNotEmpty()) {
+                if (cats.isNotEmpty() && !searching && view == "Transactions") {
                     Spacer(Modifier.height(4.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(cats) { (c, v) ->
@@ -84,8 +111,15 @@ fun SpendingScreen(vm: MainViewModel) {
                 }
                 Spacer(Modifier.height(8.dp))
             }
+            if (view == "Reports" && !searching) {
+                item { ReportsView(vm, ym, txs, recent) }
+            } else {
             if (shown.isEmpty()) item {
-                EmptyState("Nothing here", if (txs.isEmpty()) "No transactions recorded this month." else "No transactions match this filter.")
+                EmptyState("Nothing here", when {
+                    searching -> "No transactions match \"$query\"."
+                    txs.isEmpty() -> "No transactions recorded this month."
+                    else -> "No transactions match this filter."
+                })
             }
             val byDay = shown.groupBy { vm.repo.dateOf(it.timestamp) }
             byDay.forEach { (day, list) ->
@@ -97,6 +131,7 @@ fun SpendingScreen(vm: MainViewModel) {
                     }
                 }
                 items(list, key = { it.id }) { t -> TxRow(t, s.mainCurrency) { editing = t } }
+            }
             }
         }
         FloatingActionButton(onClick = { adding = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
@@ -138,6 +173,7 @@ fun kindLabel(kind: String, credit: Boolean) = when (kind) {
 
 @Composable
 fun TxEditor(vm: MainViewModel, t: TxEntity, onDone: () -> Unit) {
+    val s by vm.settings.collectAsStateWithLifecycle()
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var category by remember { mutableStateOf(t.category) }
     var applyAll by remember { mutableStateOf(t.merchantKey.isNotBlank()) }
@@ -145,7 +181,8 @@ fun TxEditor(vm: MainViewModel, t: TxEntity, onDone: () -> Unit) {
     var note by remember { mutableStateOf(t.note) }
     var merchant by remember { mutableStateOf(t.merchant ?: "") }
     var confirmDelete by remember { mutableStateOf(false) }
-    val options = if (t.direction == Direction.CREDIT.name) Categories.income + Categories.spending else Categories.all
+    var splitting by remember { mutableStateOf(false) }
+    val options = if (t.direction == Direction.CREDIT.name) (s.incomeCategories + s.spendingCategories).distinct() else s.allCategories
 
     ModalBottomSheet(onDismissRequest = onDone, sheetState = sheet) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp).verticalScroll(rememberScrollState()),
@@ -164,16 +201,19 @@ fun TxEditor(vm: MainViewModel, t: TxEntity, onDone: () -> Unit) {
                     else vm.updateTx(updated)
                     onDone()
                 }) { Text("Save") }
+                OutlinedButton(onClick = { splitting = true }) { Text("Split") }
                 TextButton(onClick = { confirmDelete = true }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
             }
         }
     }
+    if (splitting) SplitDialog(vm, t, options) { splitting = false; onDone() }
     if (confirmDelete) ConfirmDialog("Delete this transaction?", "It will be removed from your totals. The SMS stays on your phone.",
         "Delete", { vm.deleteTx(t); onDone() }, { confirmDelete = false })
 }
 
 @Composable
 fun AddTxSheet(vm: MainViewModel, mainCcy: String, onDone: () -> Unit) {
+    val s by vm.settings.collectAsStateWithLifecycle()
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var amount by remember { mutableStateOf("") }
     var ccy by remember { mutableStateOf(mainCcy) }
@@ -196,7 +236,7 @@ fun AddTxSheet(vm: MainViewModel, mainCcy: String, onDone: () -> Unit) {
                 InputField(ccy, { ccy = it.uppercase().take(4) }, "Currency", Modifier.width(110.dp))
             }
             InputField(merchant, { merchant = it }, "Where / who")
-            ChoiceField("Category", category, if (dir == Direction.CREDIT) Categories.income else Categories.spending, { category = it })
+            ChoiceField("Category", category, if (dir == Direction.CREDIT) s.incomeCategories else s.spendingCategories, { category = it })
             DateField("Date", date, { date = it })
             InputField(note, { note = it }, "Note")
             Button(onClick = {
@@ -206,4 +246,37 @@ fun AddTxSheet(vm: MainViewModel, mainCcy: String, onDone: () -> Unit) {
             }) { Text("Add transaction") }
         }
     }
+}
+
+/** Divide one payment across categories, e.g. a Carrefour bill that was half groceries, half household. */
+@Composable
+fun SplitDialog(vm: MainViewModel, t: TxEntity, options: List<String>, onDone: () -> Unit) {
+    val parts = remember { mutableStateListOf("" to "Shopping") }
+    val used = parts.sumOf { it.first.toAmount() ?: 0.0 }
+    val remainder = t.amount - used
+    AlertDialog(
+        onDismissRequest = onDone,
+        title = { Text("Split ${money(t.amount, t.currency)}") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Muted("Each part becomes its own transaction. What's left stays as ${t.category}.")
+                parts.forEachIndexed { i, (amt, cat) ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        NumberField(amt, { parts[i] = it to cat }, "Amount", Modifier.weight(0.9f))
+                        ChoiceField("Category", cat, options, { parts[i] = amt to it }, Modifier.weight(1.1f))
+                    }
+                }
+                TextButton(onClick = { parts.add("" to "Groceries") }) { Text("Add another part") }
+                Text("Left as ${t.category}: ${money(remainder, t.currency)}",
+                    color = if (remainder <= 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = used > 0 && remainder > 0, onClick = {
+                vm.split(t, parts.mapNotNull { (a, c) -> a.toAmount()?.takeIf { it > 0 }?.let { it to c } })
+                onDone()
+            }) { Text("Split") }
+        },
+        dismissButton = { TextButton(onClick = onDone) { Text("Cancel") } },
+    )
 }
