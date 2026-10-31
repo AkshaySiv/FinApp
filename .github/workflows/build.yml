@@ -1,0 +1,68 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Signing key
+        # The same key must sign every build so updates install over the old app.
+        # The key file is encrypted; its password lives only in the COMPOUND_KEYSTORE_PASSWORD secret.
+        env:
+          PW: ${{ secrets.COMPOUND_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$PW" ]; then
+            echo "COMPOUND_KEYSTORE=$GITHUB_WORKSPACE/keystore/compound-release.jks" >> "$GITHUB_ENV"
+            echo "COMPOUND_KEYSTORE_PASSWORD=$PW" >> "$GITHUB_ENV"
+            echo "SIGNED=1" >> "$GITHUB_ENV"
+          else
+            echo "::warning::COMPOUND_KEYSTORE_PASSWORD secret is not set. This build uses a temporary key: test it, but don't rely on updating over it."
+          fi
+
+      - name: Unit tests
+        run: gradle --no-daemon :app:testReleaseUnitTest
+
+      - name: Build APK
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Rename APK
+        run: cp app/build/outputs/apk/release/app-release.apk "Compound-1.0.${GITHUB_RUN_NUMBER}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Compound-apk
+          path: Compound-*.apk
+
+      - name: Publish release
+        if: env.SIGNED == '1'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Compound 1.0.${{ github.run_number }}
+          body: "Download the APK below on your phone and open it to install or update."
+          files: Compound-*.apk
+
+      - name: Test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: app/build/reports/tests/
