@@ -83,23 +83,61 @@ def _yahoo_chart(real: str, rng: str = "1d") -> dict:
     raise last or RuntimeError("no response")
 
 
-_ALIAS: dict = {}  # symbol as asked -> symbol Yahoo actually knows
-
-
 def _chart(sym: str, rng: str = "1d") -> dict:
-    """UAE stocks: Yahoo lists Dubai (DFM) as .AE and Abu Dhabi (ADX) as .AD. If one ending is
-    unknown, try the other and remember which worked."""
-    real = _ALIAS.get(sym, sym)
-    try:
-        return _yahoo_chart(real, rng)
-    except ValueError:
-        up = sym.upper()
-        if up.endswith((".AE", ".AD")) and real == sym:
-            other = sym[:-3] + (".AD" if up.endswith(".AE") else ".AE")
-            j = _yahoo_chart(other, rng)
-            _ALIAS[sym] = other
-            return j
-        raise
+    return _yahoo_chart(sym, rng)
+
+
+# ---------------------------------------------------------------- TradingView scanner (UAE stocks)
+# Yahoo does not list the Abu Dhabi exchange (ADX). Only ticker symbols are sent.
+TV_URL = "https://scanner.tradingview.com/uae/scan"
+TV_PREFIXES = ("ADX:", "DFM:")
+
+
+def _tv_scan(tickers: list[str], columns: list[str]) -> dict:
+    body = json.dumps({"symbols": {"tickers": tickers}, "columns": columns})
+    if _CURL:
+        p = subprocess.run([_CURL, "-s", "--max-time", "10", "-A", "Mozilla/5.0", "-H", "Content-Type: application/json",
+                            "-X", "POST", "-d", body, "-w", "\n%{http_code}", TV_URL],
+                           capture_output=True, text=True, timeout=15)
+        out, _, code = p.stdout.rpartition("\n")
+        if code.strip() != "200":
+            raise RuntimeError(f"TradingView feed error ({code.strip() or 'no response'})")
+        j = json.loads(out)
+    else:
+        req = urllib.request.Request(TV_URL, data=body.encode(), headers={"User-Agent": "Mozilla/5.0", "Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            j = json.loads(r.read().decode())
+    return {row["s"]: dict(zip(columns, row["d"])) for row in (j.get("data") or [])}
+
+
+def _tv_pick(sym: str, columns: list[str]) -> tuple[str, dict]:
+    """sym is 'ADX:ALDAR' or 'DFM:EMAAR'. If it is not on that exchange, try the other UAE exchange."""
+    ex, _, base = sym.upper().partition(":")
+    other = "DFM" if ex == "ADX" else "ADX"
+    rows = _tv_scan([f"{ex}:{base}", f"{other}:{base}"], columns)
+    for key in (f"{ex}:{base}", f"{other}:{base}"):
+        if key in rows and rows[key].get("close") is not None:
+            return key, rows[key]
+    raise ValueError("symbol not found")
+
+
+def tv_quote(sym: str) -> dict:
+    key, d = _tv_pick(sym, ["close", "change", "currency", "description"])
+    price, chg = float(d["close"]), d.get("change")
+    return {"price": price, "prev": price / (1 + float(chg) / 100) if chg is not None else None,
+            "ccy": d.get("currency") or "AED", "name": d.get("description") or key, "resolved": key}
+
+
+def tv_metrics(sym: str) -> dict:
+    """One-year performance figures for the stock-health score (same shape as insights.metrics_from_closes)."""
+    _, d = _tv_pick(sym, ["close", "Perf.Y", "Perf.6M", "Perf.3M", "price_52_week_high", "SMA50", "SMA200"])
+    f = lambda k: float(d[k]) if d.get(k) is not None else None
+    close, hi, s50, s200 = f("close"), f("price_52_week_high"), f("SMA50"), f("SMA200")
+    pct = lambda k: f(k) / 100 if f(k) is not None else None
+    return {"ret_1y": pct("Perf.Y"), "ret_6m": pct("Perf.6M"), "ret_3m": pct("Perf.3M"),
+            "from_high": (close / hi - 1) if hi else 0.0, "max_dd": None,
+            "above_200": (close > s200) if s200 else None, "golden": (s50 > s200) if s50 and s200 else None,
+            "vol": None, "days": 250}
 
 
 def yahoo_history(symbol: str, rng: str = "1y") -> list[float]:
@@ -210,7 +248,7 @@ def holding_symbol(h: dict) -> str:
     if mk == "IN":
         return sym + (".BO" if ex == "BSE" else ".NS")
     if mk == "UAE":
-        return sym + (".AD" if ex == "ADX" else ".AE")
+        return f"ADX:{sym}" if ex == "ADX" else sym + ".AE"
     return sym
 
 
@@ -219,6 +257,13 @@ def _quote_uncached(kind: str, sym: str) -> dict:
         return mf_nav(sym)
     if sym.strip().upper() in METALS:
         return metal_quote(sym.strip())
+    if sym.strip().upper().startswith(TV_PREFIXES):
+        return tv_quote(sym.strip())
+    if sym.strip().upper().endswith(".AE"):  # Dubai: Yahoo first; if Yahoo doesn't know it, try the UAE feed
+        try:
+            return yahoo_quote(sym)
+        except ValueError:
+            return tv_quote("DFM:" + sym.strip()[:-3])
     if "-" in sym:
         try:
             q = crypto_quote(sym.strip())

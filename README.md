@@ -85,7 +85,7 @@ Open **Broker Sync** in the sidebar. Stocks go to **Indian Stocks** and mutual f
 - **Auto-lock.** After 10 idle minutes (you can change this) the key is wiped from memory and you must unlock again. Three failed unlock attempts in a row trigger an increasing delay.
 - **File permissions.** The vault and backups are readable only by your macOS user (`chmod 600` for files, `700` for the folder).
 - **Backups.** An encrypted backup is made automatically at most once an hour, and the last 30 are kept. You can also download one in Settings. These files are safe to keep on iCloud Drive or a USB stick.
-- **Network use.** The app only connects to Yahoo Finance, xaus.com, gold-api.com, CoinGecko (prices), api.mfapi.in / amfiindia.com (NAVs), open.er-api.com (FX), and — if you connect them — Zerodha and Fyers. It sends only ticker symbols, scheme codes and currency codes — never your quantities, values or names. Charts and fonts are bundled, so there are no CDN calls. To turn price updates off, set auto-update to 0 in Settings.
+- **Network use.** The app only connects to Yahoo Finance, TradingView's scanner feed (Abu Dhabi stocks), xaus.com, gold-api.com, CoinGecko (prices), api.mfapi.in / amfiindia.com (NAVs), open.er-api.com (FX), and — if you connect them — Zerodha and Fyers. It sends only ticker symbols, scheme codes and currency codes — never your quantities, values or names. Charts and fonts are bundled, so there are no CDN calls. To turn price updates off, set auto-update to 0 in Settings.
 
 **Data location:** `~/Library/Application Support/FamilyWealth/`
 

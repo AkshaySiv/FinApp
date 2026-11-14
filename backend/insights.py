@@ -87,7 +87,7 @@ def fetch_health(symbols: list[str], progress: dict) -> tuple[dict, str | None]:
     for i, s in enumerate(symbols):
         progress["done"] = i
         try:
-            m = metrics_from_closes(P.yahoo_history(s))
+            m = P.tv_metrics(s) if s.upper().startswith(P.TV_PREFIXES) else metrics_from_closes(P.yahoo_history(s))
             out[s] = {"ts": time.time(), "m": m, "error": None if m else "not enough price history"}
         except ValueError as e:  # unknown symbol: remember the miss, don't keep retrying
             out[s] = {"ts": time.time(), "m": None, "error": str(e)}
