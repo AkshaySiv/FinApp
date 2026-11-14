@@ -1,0 +1,15 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Never commit financial data
+*.enc
+*.tmp
+backups/
+data/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
