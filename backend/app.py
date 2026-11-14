@@ -124,14 +124,19 @@ def run_refresh(market: str | None = None) -> dict:
         with vault.lock:
             if not vault.unlocked:
                 return {"locked": True}
-            jobs = P.collect(vault.data, market)
+            skip = broker_priced_sources()
+            jobs = P.collect(vault.data, market, skip)
         res = P.fetch(jobs, with_fx=market is None)
         with vault.lock:
             if not vault.unlocked:
                 return {"locked": True}
-            stats = P.apply(vault.data, res)
+            stats = P.apply(vault.data, res, skip)
             persist()
         STATE["last_refresh"] = time.time()
+        if skip and market in (None, "IN"):  # broker-synced stocks get fresh prices from the broker itself
+            synced = sync_all(auto=True)
+            STATE["last_broker_sync"] = time.time()
+            stats = {**stats, "broker": [{k: r.get(k) for k in ("ok", "stocks", "funds", "error")} for r in synced]}
         return stats
     finally:
         STATE["refreshing"] = False
@@ -165,6 +170,11 @@ def _conn(cid: str) -> dict:
     if not c:
         raise HTTPException(404, "connection not found")
     return c
+
+
+def broker_priced_sources() -> set:
+    """Connections whose session is live — their holdings are priced by the broker, not Yahoo."""
+    return {c["id"] for c in vault.data.get("connections", []) if c.get("access_token") and c.get("status") == "ok"}
 
 
 def sync_connection(cid: str) -> dict:

@@ -1,6 +1,6 @@
 /* Family Wealth — front-end (vanilla JS, no external network calls). */
 "use strict";
-const APP_VERSION = "1.6";
+const APP_VERSION = "1.7";
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -521,7 +521,7 @@ function viewStocks(mk) {
       ${kpi("Today", dayBase ? `<span class="${signCls(day)}">${fmt(day, ncur)}</span>` : "—", dayBase ? `<span class="${signCls(day)}">${pct(day / dayBase, 2)}</span>` : "refresh prices to see")}
       ${kpi("Holdings", rows.length, `${[...new Set(rows.map((r) => r.exchange))].filter(Boolean).join(" · ") || M.exchanges.join(" · ")}`)}
     </div>
-    <div class="toolbar" style="margin-top:16px"><span class="muted">Prices in ${ncur} refresh automatically (delayed quotes, Yahoo Finance). ⚠ means a ticker isn't found — edit it and set the Yahoo symbol override.</span><div class="spacer"></div>
+    <div class="toolbar" style="margin-top:16px"><span class="muted">${mk === "IN" && rows.some((r) => r.source) ? "⇆ Broker-synced stocks are priced by your broker (Zerodha/Fyers); others" : "Prices"} refresh automatically${mk === "IN" && rows.some((r) => r.source) ? "" : " (delayed quotes, Yahoo Finance)"}. ⚠ means a price couldn't be fetched — hover it for the reason.</span><div class="spacer"></div>
       <button class="btn" data-act="refresh-prices" data-market="${mk}">↻ Refresh prices</button><button class="btn primary" data-act="add-holding" data-market="${mk}">+ Add holding</button></div>
     <div class="card">${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Symbol</th><th>Exch.</th><th>Owner</th><th class="num">Qty</th><th class="num">Avg cost</th><th class="num">LTP</th><th class="num">Day</th><th class="num">Invested</th><th class="num">Value</th><th class="num">P&amp;L</th><th class="num">Weight</th><th></th></tr></thead><tbody>${body}</tbody>
         <tfoot><tr><td colspan="7">Total · ${rows.length} holding(s)</td><td class="num">${fmt(tc, ncur)}</td><td class="num">${fmt(tv, ncur)}</td><td class="num ${signCls(pnl)}">${fmt(pnl, ncur)}</td><td class="num">100%</td><td></td></tr></tfoot></table></div>`
@@ -1041,7 +1041,9 @@ function bindActions(root) {
       t.disabled = true; t.textContent = "Fetching…";
       try {
         const r = await api("/api/prices/refresh", { method: "POST", body: { market: t.dataset.market } });
-        toast(`Updated ${r.updated.length} price(s)` + (r.failed.length ? ` · failed: ${r.failed.join(", ")}` : ""), r.failed.length ? "error" : "ok");
+        const br = (r.broker || []).filter((x) => x.ok).reduce((a, x) => a + (x.stocks || 0), 0);
+        const brErr = (r.broker || []).filter((x) => !x.ok).map((x) => x.error);
+        toast([br ? `${br} stocks refreshed from broker` : "", r.updated ? `${r.updated} from market data` : "", r.failed?.length ? `not found: ${r.failed.join(", ")}` : "", ...brErr].filter(Boolean).join(" · ") || "Up to date", r.failed?.length || brErr.length ? "error" : "ok");
         await refresh();
       } catch (err) { toast(err.message, "error"); t.disabled = false; t.textContent = "↻ Refresh prices"; }
     }

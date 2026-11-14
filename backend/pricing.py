@@ -212,10 +212,14 @@ def quote(kind: str, sym: str, fresh: bool = False) -> dict:
 
 
 # ---------------------------------------------------------------- refresh pipeline
-def collect(data: dict, market: str | None = None) -> set[tuple[str, str]]:
-    """Unique (kind, symbol) jobs. Read under the vault lock; network happens outside it."""
+def collect(data: dict, market: str | None = None, skip_sources: set | None = None) -> set[tuple[str, str]]:
+    """Unique (kind, symbol) jobs. Read under the vault lock; network happens outside it.
+    Holdings synced from a logged-in broker are skipped: the broker already supplies their price."""
+    skip_sources = skip_sources or set()
     jobs: set[tuple[str, str]] = set()
     for h in data.get("holdings", []):
+        if h.get("source") in skip_sources:
+            continue
         if (not market or h.get("market") == market) and h.get("symbol"):
             jobs.add(("yahoo", holding_symbol(h)))
     if not market:
@@ -259,7 +263,8 @@ def _to(price: float, frm: str, to: str, fx: dict) -> float | None:
     return None
 
 
-def apply(data: dict, res: dict) -> dict:
+def apply(data: dict, res: dict, skip_sources: set | None = None) -> dict:
+    skip_sources = skip_sources or set()
     now = datetime.now().isoformat(timespec="minutes")
     if res.get("fx"):
         data["fx"] = res["fx"]
@@ -269,6 +274,9 @@ def apply(data: dict, res: dict) -> dict:
 
     for h in data.get("holdings", []):
         if not h.get("symbol"):
+            continue
+        if h.get("source") in skip_sources:
+            h["price_error"] = None  # priced by the broker sync
             continue
         job = ("yahoo", holding_symbol(h))
         if job in res["quotes"]:
