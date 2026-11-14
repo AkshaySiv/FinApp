@@ -17,7 +17,7 @@ from . import pricing as P
 
 BENCH = {"IN": ("^NSEI", "Nifty 50"), "US": ("^GSPC", "S&P 500")}
 HEALTH_TTL = 20 * 3600
-PAUSE = 1.2  # seconds between history requests — stay well under Yahoo's limits
+PAUSE = 3.0  # seconds between history requests — stay well under Yahoo's limits
 
 
 # ================================================================ stock health

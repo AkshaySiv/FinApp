@@ -233,7 +233,8 @@ def asset_value(a: dict, fx: dict, today: date | None = None) -> tuple[float, fl
 # ---------- holdings ----------
 def holding_values(h: dict) -> tuple[float, float]:
     qty = num(h.get("qty"))
-    return qty * num(h.get("price")), qty * num(h.get("avg_cost"))
+    price = num(h.get("price")) or num(h.get("avg_cost"))  # no price fetched yet: carry at cost, not zero
+    return qty * price, qty * num(h.get("avg_cost"))
 
 
 def item_value_native(kind: str, item: dict, fx: dict) -> tuple[float, float, str]:

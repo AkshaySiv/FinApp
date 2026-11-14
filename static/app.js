@@ -1,6 +1,6 @@
 /* Family Wealth — front-end (vanilla JS, no external network calls). */
 "use strict";
-const APP_VERSION = "1.8";
+const APP_VERSION = "1.9";
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -494,7 +494,7 @@ function viewStocks(mk) {
   let tv = 0, tc = 0, day = 0, dayBase = 0;
   const calc = rows.map((h) => {
     const c = h.currency || ncur;
-    const v = conv((h.qty || 0) * (h.price || 0), c, ncur), cost = conv((h.qty || 0) * (h.avg_cost || 0), c, ncur);
+    const v = conv((h.qty || 0) * (h.price || h.avg_cost || 0), c, ncur), cost = conv((h.qty || 0) * (h.avg_cost || 0), c, ncur);
     tv += v; tc += cost;
     if (h.prev_close) { day += conv((h.qty || 0) * (h.price - h.prev_close), c, ncur); dayBase += conv((h.qty || 0) * h.prev_close, c, ncur); }
     return { h, c, v, cost };
@@ -507,7 +507,7 @@ function viewStocks(mk) {
     return `<tr><td><div style="font-weight:600">${esc(h.symbol)}${h.source ? ` <span class="tag sync" title="Synced from ${esc(h.source_label || "broker")}">⇆ ${esc((h.source_label || "").split(" · ")[0])}</span>` : ""}</div><div class="muted" style="font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis">${dup ? `<span class="down">⚠ also synced from broker — delete this manual entry</span>` : esc(h.name || "")}</div></td>
       <td><span class="tag">${esc(h.exchange || "")}</span></td><td>${ownerChip(h.owner)}</td>
       <td class="num">${numf(h.qty, 4)}</td><td class="num">${fmt(h.avg_cost, c, { dp: 2 })}</td>
-      <td class="num">${fmt(h.price, c, { dp: 2 })}${h.price_error ? `<div class="down" style="font-size:11px" title="${esc(h.price_error)}">⚠ ${esc(h.price_error.slice(0, 28))}</div>` : h.price_updated ? `<div class="muted" style="font-size:11px">${ago(h.price_updated)}</div>` : ""}</td>
+      <td class="num">${h.price ? fmt(h.price, c, { dp: 2 }) : `<span class="muted">no price yet</span>`}${h.price_error ? `<div class="down" style="font-size:11px" title="${esc(h.price_error)}">⚠ ${esc(h.price_error.slice(0, 28))}</div>` : h.price_updated ? `<div class="muted" style="font-size:11px">${ago(h.price_updated)}</div>` : ""}</td>
       <td class="num ${dp == null ? "muted" : signCls(dp)}">${dp == null ? "—" : pct(dp, 2)}</td>
       <td class="num">${fmt(cost, ncur)}</td><td class="num">${fmt(v, ncur)}</td>
       <td class="num ${signCls(p)}">${fmt(p, ncur)}<div style="font-size:11.5px">${cost ? pct(p / cost) : ""}</div></td>
@@ -544,7 +544,7 @@ function ownerSplit(calc, ncur, tv) {
 function afterStocks(mk) {
   const ncur = state.meta.markets[mk].currency;
   const rows = state.data.holdings.filter((h) => h.market === mk && visibleToWho(h.owner))
-    .map((h) => ({ l: h.symbol, v: conv((h.qty || 0) * (h.price || 0), h.currency || ncur, ncur) })).sort((a, b) => b.v - a.v);
+    .map((h) => ({ l: h.symbol, v: conv((h.qty || 0) * (h.price || h.avg_cost || 0), h.currency || ncur, ncur) })).sort((a, b) => b.v - a.v);
   const top = rows.slice(0, 9);
   if (rows.length > 9) top.push({ l: "Other", v: rows.slice(9).reduce((a, b) => a + b.v, 0) });
   hbar("ch-stock-alloc", top.map((r) => r.l), top.map((r) => r.v), cssVar("--s1"), (v, c) => fmt(v, ncur, { compact: c }));
