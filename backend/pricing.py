@@ -59,7 +59,7 @@ def _yahoo_session():
         _Y["cookie_at"] = time.time()
 
 
-def _yahoo_chart(real: str) -> dict:
+def _yahoo_chart(real: str, rng: str = "1d") -> dict:
     if time.time() < _Y["cooldown_until"]:
         raise RuntimeError("Yahoo rate-limited — auto-retry at " + time.strftime("%H:%M", time.localtime(_Y["cooldown_until"])))
     _yahoo_session()
@@ -67,7 +67,7 @@ def _yahoo_chart(real: str) -> dict:
     for host in ("query1", "query2"):
         for attempt in range(2):
             try:
-                return _yget(f"https://{host}.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(real)}?range=1d&interval=1d")
+                return _yget(f"https://{host}.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(real)}?range={rng}&interval=1d")
             except urllib.error.HTTPError as e:
                 last = e
                 if e.code == 404:
@@ -83,6 +83,17 @@ def _yahoo_chart(real: str) -> dict:
         _Y["cooldown_until"] = time.time() + YAHOO_COOLDOWN
         raise RuntimeError("Yahoo rate-limited (429) — auto-retry in 10 min")
     raise last or RuntimeError("no response")
+
+
+def yahoo_history(symbol: str, rng: str = "1y") -> list[float]:
+    """Daily (dividend-adjusted) closes, oldest first."""
+    j = _yahoo_chart(symbol.strip(), rng)
+    res = (j.get("chart") or {}).get("result")
+    if not res:
+        raise ValueError("symbol not found")
+    ind = res[0].get("indicators") or {}
+    closes = ((ind.get("adjclose") or [{}])[0].get("adjclose")) or ((ind.get("quote") or [{}])[0].get("close")) or []
+    return [float(x) for x in closes if x is not None]
 
 
 def yahoo_quote(symbol: str) -> dict:

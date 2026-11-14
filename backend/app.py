@@ -25,6 +25,9 @@ from fastapi.staticfiles import StaticFiles
 from . import finance as F
 from . import pricing as P
 from . import brokers as B
+from . import insights as INS
+from . import ai as AI
+from fastapi.responses import StreamingResponse
 from fastapi.responses import RedirectResponse
 from .vault import Vault, VaultError
 
@@ -38,6 +41,8 @@ SESSION = {"token": None, "last": 0.0}
 STATE = {"rev": 0, "last_refresh": 0.0, "refreshing": False, "pending": False, "last_broker_sync": 0.0}
 LOGIN_STATES: dict = {}   # connection id -> (nonce, expires_at) for the OAuth round trip
 SYNC_LOCK = threading.Lock()
+HEALTH = {"running": False, "last": 0.0, "error": None, "total": 0, "done": 0}
+HEALTH_LOCK = threading.Lock()
 REFRESH_LOCK = threading.Lock()
 FAILED = {"count": 0, "until": 0.0}
 
@@ -227,6 +232,31 @@ def sync_all(auto: bool = False) -> list:
         SYNC_LOCK.release()
 
 
+# ---------------------------------------------------------------- stock health (1-year history)
+def run_health(force: bool = False) -> None:
+    if not HEALTH_LOCK.acquire(blocking=False):
+        return
+    HEALTH.update(running=True, done=0, total=0)
+    try:
+        with vault.lock:
+            if not vault.unlocked:
+                return
+            jobs = INS.health_jobs(vault.data, force)
+        HEALTH["total"] = len(jobs)
+        err = None
+        if jobs:
+            out, err = INS.fetch_health(jobs, HEALTH)
+            with vault.lock:
+                if vault.unlocked:
+                    INS.apply_health(vault.data, out)
+                    persist()
+        HEALTH["error"] = err
+        HEALTH["last"] = time.time() - (6 * 3600 - 1800 if err else 0)  # retry in 30 min after a failure
+    finally:
+        HEALTH["running"] = False
+        HEALTH_LOCK.release()
+
+
 def _refresh_loop():
     while True:
         time.sleep(20)
@@ -235,6 +265,8 @@ def _refresh_loop():
                 mins = F.num(vault.data.get("settings", {}).get("auto_refresh_minutes"), 15)
                 if mins > 0 and time.time() - STATE["last_refresh"] > mins * 60:
                     run_refresh()
+                if time.time() - HEALTH["last"] > 6 * 3600:
+                    threading.Thread(target=run_health, daemon=True).start()
                 bmins = F.num(vault.data.get("settings", {}).get("broker_sync_minutes"), 30)
                 if bmins > 0 and time.time() - STATE["last_broker_sync"] > bmins * 60:
                     STATE["last_broker_sync"] = time.time()
@@ -421,6 +453,7 @@ def get_data():
         v, c, _ = F.asset_value(a, fx)
         out["assets"].append({**a, "calc_value": round(v, 2), "calc_cost": round(c, 2)})
     out["connections"] = [public_conn(c) for c in d.get("connections", [])]
+    out["cashflow"] = d.get("cashflow") or {}
     out["rev"] = STATE["rev"]
     return out
 
@@ -438,6 +471,83 @@ def loan_schedule(lid: str):
     if not ln:
         raise HTTPException(404, "not found")
     return {"loan": ln, "status": F.loan_status(ln), "schedule": F.amortization(ln)}
+
+
+# ---------------------------------------------------------------- insights, loan check, local AI
+def _cur(currency: str | None = None) -> str:
+    return currency if currency in F.CURRENCIES else vault.data["settings"].get("base_currency", "AED")
+
+
+@app.get("/api/insights")
+def get_insights(currency: str = "", who: str = "family"):
+    cur = _cur(currency)
+    with vault.lock:
+        d = vault.data
+        s = F.summarize({**d, "snapshots": []}, cur, who)
+        stocks = INS.stock_health(d, cur, who)
+        fnd, ratios = INS.findings(s, stocks, INS.cashflow(d, cur), who == "family")
+    return {"currency": cur, "stocks": stocks, "findings": fnd, "ratios": ratios,
+            "health": {k: HEALTH[k] for k in ("running", "error", "total", "done")}}
+
+
+@app.post("/api/insights/refresh")
+def refresh_insights():
+    threading.Thread(target=run_health, kwargs={"force": True}, daemon=True).start()
+    return {"ok": True}
+
+
+@app.put("/api/cashflow")
+async def put_cashflow(req: Request):
+    body = await req.json()
+    ids = {m["id"] for m in vault.data["members"]}
+    money = lambda v: {"amount": max(F.num((v or {}).get("amount")), 0.0),
+                       "currency": (v or {}).get("currency") if (v or {}).get("currency") in F.CURRENCIES else _cur()}
+    with vault.lock:
+        vault.data["cashflow"] = {
+            "incomes": {k: money(v) for k, v in (body.get("incomes") or {}).items() if k in ids},
+            "expenses": money(body.get("expenses")),
+            "expected_return": max(0.0, min(F.num(body.get("expected_return"), 10.0), 40.0))}
+        persist()
+        return vault.data["cashflow"]
+
+
+@app.post("/api/loan-check")
+async def post_loan_check(req: Request):
+    body = await req.json()
+    if F.num(body.get("amount")) <= 0 or F.num(body.get("tenure_months")) <= 0:
+        raise HTTPException(400, "Enter a loan amount and tenure")
+    with vault.lock:
+        return INS.loan_check(vault.data, body)
+
+
+@app.get("/api/ai/status")
+def ai_status():
+    st = AI.status()
+    saved = vault.data["settings"].get("ai_model") or ""
+    st["model"] = saved if saved in st["models"] else (st["models"][0] if st["models"] else "")
+    return st
+
+
+@app.post("/api/ai/chat")
+async def ai_chat(req: Request):
+    body = await req.json()
+    msgs = [{"role": m["role"], "content": str(m.get("content", ""))[:6000]}
+            for m in (body.get("messages") or [])[-12:] if m.get("role") in ("user", "assistant")]
+    if not msgs:
+        raise HTTPException(400, "empty message")
+    model = ai_status()["model"]
+    if not model:
+        raise HTTPException(503, "No local model available. Install Ollama and pull a model first.")
+    with vault.lock:
+        ctx = INS.build_context(vault.data, _cur(body.get("currency")), body.get("loan") or None)
+
+    def gen():
+        try:
+            yield from AI.chat_stream(model, [{"role": "system", "content": ctx}] + msgs)
+        except Exception as e:
+            yield f"\n\n⚠ {e}"
+
+    return StreamingResponse(gen(), media_type="text/plain; charset=utf-8")
 
 
 # ---------------------------------------------------------------- broker connections
@@ -654,6 +764,8 @@ async def put_settings(req: Request):
         s["base_currency"] = body["base_currency"]
     if "auto_lock_minutes" in body:
         s["auto_lock_minutes"] = max(0, min(int(F.num(body["auto_lock_minutes"], 10)), 240))
+    if "ai_model" in body:
+        s["ai_model"] = str(body["ai_model"])[:100]
     if "broker_sync_minutes" in body:
         s["broker_sync_minutes"] = max(0, min(int(F.num(body["broker_sync_minutes"], 30)), 1440))
     if "auto_refresh_minutes" in body:

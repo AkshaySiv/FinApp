@@ -1,6 +1,6 @@
 /* Family Wealth — front-end (vanilla JS, no external network calls). */
 "use strict";
-const APP_VERSION = "1.7";
+const APP_VERSION = "1.8";
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -178,7 +178,7 @@ setInterval(async () => {
     const r = await api("/api/rev");
     state.lastRefresh = r.last_refresh; state.refreshing = r.refreshing;
     updateRefreshBadge();
-    const busy = $("#modal-root").children.length || ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName);
+    const busy = state.chatBusy || state.view === "advisor" || $("#modal-root").children.length || ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName);
     if (r.rev !== state.data.rev && !busy) await refresh();
   } catch {}
 }, 15000);
@@ -195,12 +195,12 @@ function updateRefreshBadge() {
 
 // ------------------------------------------------------------------ shell
 const NAV = [
-  ["Overview", [["dashboard", "◧", "Dashboard"], ["family", "◎", "Family"]]],
+  ["Overview", [["dashboard", "◧", "Dashboard"], ["insights", "◈", "Insights"], ["advisor", "✦", "AI Advisor"], ["family", "◎", "Family"]]],
   ["Wealth", [["assets", "▤", "Assets"], ["stocks-IN", "₹", "Indian Stocks"], ["stocks-US", "$", "US Stocks"], ["stocks-UAE", "د", "UAE Stocks"], ["brokers", "⇆", "Broker Sync"]]],
   ["Planning", [["loans", "⇄", "Loans & EMI"], ["goals", "◆", "Goals"]]],
   ["", [["settings", "⚙", "Settings"]]],
 ];
-const TITLES = { dashboard: "Dashboard", family: "Family", assets: "Assets", "stocks-IN": "Indian Stocks", "stocks-US": "US Stocks", "stocks-UAE": "UAE Stocks", loans: "Loans & EMI", goals: "Goals", settings: "Settings", brokers: "Broker Sync" };
+const TITLES = { dashboard: "Dashboard", family: "Family", assets: "Assets", "stocks-IN": "Indian Stocks", "stocks-US": "US Stocks", "stocks-UAE": "UAE Stocks", loans: "Loans & EMI", goals: "Goals", settings: "Settings", brokers: "Broker Sync", insights: "Insights", advisor: "AI Advisor" };
 
 function renderShell() {
   $("#root").innerHTML = `<div class="shell">

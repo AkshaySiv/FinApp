@@ -51,6 +51,14 @@ Every asset has a **"How is it valued?"** setting. It is filled in for you based
 - **Gold price:** it is international spot from COMEX futures, per gram. Indian retail is usually about 6–10% higher (import duty plus GST); enter that as *Premium %* if you want retail value.
 - **Existing assets:** items created before this update are set to *Manual*. Edit each one and choose a method.
 
+## Insights and the AI advisor
+
+- **Insights** scores every stock on its own market behaviour over the past year (return against the Nifty 50 or S&P 500, 200-day trend, distance from the 52-week high), not on your buy price. It also reports emergency cover, EMI burden, savings rate, concentration and goal funding. Price history comes from Yahoo Finance, fetched slowly once a day; UAE stocks have no index comparison.
+- **Loan check** (AI Advisor page) shows what a new loan does to your EMIs, monthly surplus and emergency cover, and compares borrowing with using your own funds.
+- **AI Advisor** answers questions from your real numbers. It runs on your Mac through [Ollama](https://ollama.com); nothing is sent to the internet. The app does the calculations and the model explains them.
+- **Set-up:** enter income and expenses under Settings → Cash flow. For the chat: `brew install ollama`, `ollama serve`, then `ollama pull llama3.1:8b` (use `llama3.2:3b` on 8 GB Macs, a larger model on 32 GB+).
+- The scores and verdicts are rule-based analysis, not regulated financial advice.
+
 ## Broker sync (Zerodha & Fyers)
 
 Open **Broker Sync** in the sidebar. Stocks go to **Indian Stocks** and mutual funds to **Assets** (tagged ⇆). The sync runs when you unlock the app and then every 30 minutes; you can change the interval in Settings.
@@ -105,6 +113,8 @@ FW_DATA_DIR=~/Documents/fw-vault ./run.sh    # store the vault somewhere else
 ```
 backend/app.py       API server, security checks, background refresh
 backend/pricing.py   price sources: Yahoo Finance, AMFI NAV, FX
+backend/insights.py  stock health, household findings, loan check, AI context
+backend/ai.py        local Ollama client (loopback only)
 backend/brokers.py   Zerodha Kite Connect + Fyers API v3 login and holdings sync
 backend/vault.py     encryption (AES-256-GCM + scrypt), atomic saves, backups
 backend/finance.py   currency conversion, loan amortisation, goal maths, summaries
