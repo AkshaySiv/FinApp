@@ -219,3 +219,54 @@ VIEWS.advisor = {
     });
   };
 }
+
+// ------------------------------------------------------------------ Equity: all stocks + mutual funds in one place
+VIEWS.equity = {
+  rows() {
+    const n = state.data.members.length || 1, ids = state.data.members.map((m) => m.id);
+    const share = (o) => (state.who === "family" ? 1 : o === state.who ? 1 : ids.includes(o) ? 0 : 1 / n);
+    const out = [];
+    for (const h of state.data.holdings) {
+      const sh = share(h.owner); if (!sh) continue;
+      const c = h.currency || state.meta.markets[h.market].currency, px = h.price || h.avg_cost || 0;
+      out.push({ name: h.symbol, sub: h.name || "", seg: { IN: "Indian stock", US: "US stock", UAE: "UAE stock" }[h.market], nav: `stocks-${h.market}`, owner: h.owner, src: h.source_label,
+        value: conv((h.qty || 0) * px, c) * sh, cost: conv((h.qty || 0) * (h.avg_cost || 0), c) * sh,
+        day: h.prev_close && h.price ? conv((h.qty || 0) * (h.price - h.prev_close), c) * sh : 0, dayBase: h.prev_close && h.price ? conv((h.qty || 0) * h.prev_close, c) * sh : 0 });
+    }
+    for (const a of state.data.assets.filter((x) => x.asset_class === "mutual_fund")) {
+      const sh = share(a.owner); if (!sh) continue;
+      out.push({ name: a.name, sub: "", seg: "Mutual fund", nav: "assets", owner: a.owner, src: a.source_label,
+        value: conv(a.calc_value || 0, a.currency) * sh, cost: conv(a.calc_cost ?? a.calc_value ?? 0, a.currency) * sh, day: 0, dayBase: 0 });
+    }
+    return out.sort((x, y) => y.value - x.value);
+  },
+  render() {
+    const t = state.summary.totals, E = state.summary.equity, cur = state.cur, R = this.rows();
+    const day = R.reduce((a, r) => a + r.day, 0), dayBase = R.reduce((a, r) => a + r.dayBase, 0);
+    const tv = t.equity_value || 1;
+    if (!R.length) return `<div class="card">${emptyState("No stocks or mutual funds yet. Connect a broker or add holdings.", null)}</div>`;
+    return `<div class="grid kpis">
+      ${kpi("Equity value", fmt(t.equity_value), `${R.length} holdings · stocks + mutual funds`, "hero")}
+      ${kpi("Invested", fmt(t.equity_cost), "")}
+      ${kpi("Total P&amp;L", `<span class="${signCls(t.equity_pnl)}">${fmt(t.equity_pnl)}</span>`, `<span class="${signCls(t.equity_pnl)}">${pct(t.equity_pnl_pct)}</span> on cost`)}
+      ${kpi("Today", dayBase ? `<span class="${signCls(day)}">${fmt(day)}</span>` : "—", dayBase ? `<span class="${signCls(day)}">${pct(day / dayBase, 2)}</span> · stocks only` : "stocks only")}
+      ${kpi("Share of assets", t.assets ? `${((t.equity_value / t.assets) * 100).toFixed(0)}%` : "—", "of everything you own")}
+    </div>
+    <div class="grid cols-2" style="margin-top:16px">
+      <div class="card"><div class="card-h"><h3>By segment</h3><span class="sub">${cur}</span></div>
+        <div class="table-wrap"><table><thead><tr><th>Segment</th><th class="num">Holdings</th><th class="num">Invested</th><th class="num">Value</th><th class="num">P&amp;L</th><th class="num">Return</th><th class="num">Weight</th></tr></thead><tbody>
+        ${E.map((m) => `<tr style="cursor:pointer" data-nav-go="${m.nav}"><td><span class="flag">${m.key}</span> <b>${m.label}</b></td><td class="num">${m.count}</td><td class="num">${fmt(m.cost)}</td><td class="num">${fmt(m.value)}</td><td class="num ${signCls(m.pnl)}">${fmt(m.pnl)}</td><td class="num ${signCls(m.pnl)}">${m.cost ? pct(m.pnl_pct) : "—"}</td><td class="num">${((m.value / tv) * 100).toFixed(1)}%</td></tr>`).join("")}
+        </tbody><tfoot><tr><td>Total equity</td><td class="num">${E.reduce((a, m) => a + m.count, 0)}</td><td class="num">${fmt(t.equity_cost)}</td><td class="num">${fmt(t.equity_value)}</td><td class="num ${signCls(t.equity_pnl)}">${fmt(t.equity_pnl)}</td><td class="num ${signCls(t.equity_pnl)}">${pct(t.equity_pnl_pct)}</td><td class="num">100%</td></tr></tfoot></table></div></div>
+      <div class="card"><div class="card-h"><h3>Value by segment</h3><span class="sub">${cur}</span></div><div class="chart-box sm"><canvas id="ch-eq" aria-label="Equity value by segment"></canvas></div></div>
+    </div>
+    <div class="card" style="margin-top:16px"><div class="card-h"><h3>All equity holdings</h3><span class="sub">largest first · ${state.who === "family" ? "family" : esc(memberName(state.who)) + "'s share"}</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Holding</th><th>Type</th><th>Owner</th><th class="num">Invested</th><th class="num">Value</th><th class="num">P&amp;L</th><th class="num">Return</th><th class="num">Weight</th></tr></thead><tbody>
+      ${R.map((r) => { const p = r.value - r.cost; return `<tr><td><div style="font-weight:600;max-width:340px;overflow:hidden;text-overflow:ellipsis">${esc(r.name)}${r.src ? ` <span class="tag sync">⇆ ${esc(r.src.split(" · ")[0])}</span>` : ""}</div></td><td><span class="tag">${r.seg}</span></td><td>${ownerChip(r.owner)}</td>
+        <td class="num">${fmt(r.cost)}</td><td class="num">${fmt(r.value)}</td><td class="num ${signCls(p)}">${fmt(p)}</td><td class="num ${signCls(p)}">${r.cost ? pct(p / r.cost) : "—"}</td><td class="num">${((r.value / tv) * 100).toFixed(1)}%</td></tr>`; }).join("")}
+      </tbody></table></div></div>`;
+  },
+  after() {
+    const E = state.summary.equity;
+    hbar("ch-eq", E.map((m) => m.label), E.map((m) => m.value), cssVar("--s1"), (v, c) => fmt(v, state.cur, { compact: c }));
+  },
+};

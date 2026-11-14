@@ -278,8 +278,13 @@ def summarize(data: dict, cur: str, who: str = "family") -> dict:
             goal_linked[item["goal_id"]] = goal_linked.get(item["goal_id"], 0.0) + C(v, ccy)  # full value, goal-level
         return vv, cc
 
+    mf = {"value": 0.0, "cost": 0.0, "count": 0}
     for a in data.get("assets", []):
-        add_asset("asset", a, a.get("asset_class", "other"))
+        vv, cc = add_asset("asset", a, a.get("asset_class", "other"))
+        if a.get("asset_class") == "mutual_fund" and share_for(a.get("owner", "joint"), members, who) > 0:
+            mf["value"] += vv
+            mf["cost"] += cc
+            mf["count"] += 1
     for h in data.get("holdings", []):
         mk = h.get("market", "US")
         vv, cc = add_asset("holding", h, MARKETS.get(mk, MARKETS["US"])["cls"])
@@ -353,7 +358,15 @@ def summarize(data: dict, cur: str, who: str = "family") -> dict:
             "stocks_value": stocks_value, "stocks_pnl": stocks_value - stocks_cost,
             "stocks_pnl_pct": (stocks_value - stocks_cost) / stocks_cost if stocks_cost else 0.0,
             "debt_ratio": liabilities / total_assets if total_assets else 0.0,
+            "equity_value": stocks_value + mf["value"], "equity_cost": stocks_cost + mf["cost"],
+            "equity_pnl": stocks_value + mf["value"] - stocks_cost - mf["cost"],
+            "equity_pnl_pct": ((stocks_value + mf["value"]) / (stocks_cost + mf["cost"]) - 1) if stocks_cost + mf["cost"] else 0.0,
         },
+        "equity": [{"key": k, "label": m["label"], "value": m["value"], "cost": m["cost"], "pnl": m["pnl"],
+                    "pnl_pct": m["pnl_pct"], "count": m["count"], "nav": f"stocks-{k}"} for k, m in markets.items()]
+                  + [{"key": "MF", "label": "Mutual Funds", "value": mf["value"], "cost": mf["cost"],
+                      "pnl": mf["value"] - mf["cost"], "pnl_pct": (mf["value"] / mf["cost"] - 1) if mf["cost"] else 0.0,
+                      "count": mf["count"], "nav": "assets"}],
         "by_class": [{"key": k, "label": ASSET_CLASSES[k], "value": v} for k, v in by_class.items() if v > 0.005],
         "by_currency": [{"currency": k, "value": v} for k, v in by_currency.items()],
         "by_member": [{"id": m["id"], "name": m["name"], "assets": member_assets.get(m["id"], 0.0),

@@ -1,6 +1,6 @@
 /* Family Wealth — front-end (vanilla JS, no external network calls). */
 "use strict";
-const APP_VERSION = "1.15";
+const APP_VERSION = "1.16";
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -196,11 +196,11 @@ function updateRefreshBadge() {
 // ------------------------------------------------------------------ shell
 const NAV = [
   ["Overview", [["dashboard", "◧", "Dashboard"], ["insights", "◈", "Insights"], ["advisor", "✦", "AI Advisor"], ["family", "◎", "Family"]]],
-  ["Wealth", [["assets", "▤", "Assets"], ["stocks-IN", "₹", "Indian Stocks"], ["stocks-US", "$", "US Stocks"], ["stocks-UAE", "د", "UAE Stocks"], ["brokers", "⇆", "Broker Sync"]]],
+  ["Wealth", [["equity", "◩", "Equity"], ["assets", "▤", "Assets"], ["stocks-IN", "₹", "Indian Stocks"], ["stocks-US", "$", "US Stocks"], ["stocks-UAE", "د", "UAE Stocks"], ["brokers", "⇆", "Broker Sync"]]],
   ["Planning", [["loans", "⇄", "Loans & EMI"], ["goals", "◆", "Goals"]]],
   ["", [["settings", "⚙", "Settings"]]],
 ];
-const TITLES = { dashboard: "Dashboard", family: "Family", assets: "Assets", "stocks-IN": "Indian Stocks", "stocks-US": "US Stocks", "stocks-UAE": "UAE Stocks", loans: "Loans & EMI", goals: "Goals", settings: "Settings", brokers: "Broker Sync", insights: "Insights", advisor: "AI Advisor" };
+const TITLES = { dashboard: "Dashboard", family: "Family", assets: "Assets", "stocks-IN": "Indian Stocks", "stocks-US": "US Stocks", "stocks-UAE": "UAE Stocks", loans: "Loans & EMI", goals: "Goals", settings: "Settings", brokers: "Broker Sync", insights: "Insights", advisor: "AI Advisor", equity: "Equity" };
 
 function renderShell() {
   $("#root").innerHTML = `<div class="shell">
@@ -336,7 +336,7 @@ VIEWS.dashboard = {
       ${kpi("Total assets", fmt(t.assets), `Invested ${fmt(t.invested, cur, { compact: true })} · <span class="${signCls(t.gain)}">${fmt(t.gain, cur, { compact: true })} gain</span>`)}
       ${kpi("Liabilities", fmt(t.liabilities), `Debt / assets ${(t.debt_ratio * 100).toFixed(1)}%`)}
       ${kpi("Monthly EMI", fmt(t.monthly_emi), `${s.loans.filter((l) => l.active).length} active loan(s)`)}
-      ${kpi("Stocks P&amp;L", `<span class="${signCls(t.stocks_pnl)}">${fmt(t.stocks_pnl)}</span>`, `${pct(t.stocks_pnl_pct)} on ${fmt(t.stocks_value - t.stocks_pnl, cur, { compact: true })} cost`)}
+      <div class="card market" data-nav-go="equity"><div class="stat-label">Equity P&amp;L</div><div class="stat-value"><span class="${signCls(t.equity_pnl)}">${fmt(t.equity_pnl)}</span></div><div class="stat-sub">${pct(t.equity_pnl_pct)} on ${fmt(t.equity_cost, cur, { compact: true })} · stocks + mutual funds</div></div>
     </div>
 
     <div class="grid cols-2" style="margin-top:16px">
@@ -348,12 +348,12 @@ VIEWS.dashboard = {
       </div>
     </div>
 
-    <div class="grid cols-3" style="margin-top:16px">
-      ${Object.entries(s.markets).map(([k, m]) => `
-        <div class="card market" data-nav-go="stocks-${k}">
-          <div class="card-h"><span class="flag">${k}</span><h3>${m.label}</h3><div class="spacer"></div><span class="sub">${m.count} holding${m.count === 1 ? "" : "s"}</span></div>
-          <div class="stat-value" style="font-size:22px">${fmt(m.value)}</div>
-          <div class="stat-sub"><span class="${signCls(m.pnl)}">${fmt(m.pnl)} (${pct(m.pnl_pct)})</span> unrealised</div>
+    <div class="grid" style="margin-top:16px;grid-template-columns:repeat(4,minmax(0,1fr))">
+      ${s.equity.map((m) => `
+        <div class="card market" data-nav-go="${m.nav}">
+          <div class="card-h"><span class="flag">${m.key}</span><h3>${m.label}</h3><div class="spacer"></div><span class="sub">${m.count}</span></div>
+          <div class="stat-value" style="font-size:20px">${fmt(m.value)}</div>
+          <div class="stat-sub"><span class="${signCls(m.pnl)}">${fmt(m.pnl, cur, { compact: true })} (${pct(m.pnl_pct)})</span></div>
         </div>`).join("")}
     </div>
 
