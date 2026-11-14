@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -356,11 +356,10 @@ async def setup(req: Request):
 
 
 @app.post("/api/unlock")
-async def unlock(req: Request):
+def unlock(body: dict = Body(...)):
     now = time.time()
     if now < FAILED["until"]:
         raise HTTPException(429, f"Too many attempts. Wait {int(FAILED['until'] - now) + 1}s")
-    body = await req.json()
     try:
         vault.unlock(body.get("password") or "")
     except VaultError as e:
@@ -529,8 +528,7 @@ def ai_status():
 
 
 @app.post("/api/ai/chat")
-async def ai_chat(req: Request):
-    body = await req.json()
+def ai_chat(body: dict = Body(...)):
     msgs = [{"role": m["role"], "content": str(m.get("content", ""))[:6000]}
             for m in (body.get("messages") or [])[-12:] if m.get("role") in ("user", "assistant")]
     if not msgs:
@@ -799,8 +797,7 @@ def refresh_fx():
 
 
 @app.post("/api/prices/refresh")
-async def refresh_prices(req: Request):
-    body = await req.json() if (await req.body()) else {}
+def refresh_prices(body: dict = Body(default={})):  # plain def: runs in a worker thread, never blocks the server
     r = run_refresh(body.get("market"))
     if r.get("busy"):
         raise HTTPException(409, "A refresh is already running — try again in a few seconds")
