@@ -83,9 +83,28 @@ def _yahoo_chart(real: str, rng: str = "1d") -> dict:
     raise last or RuntimeError("no response")
 
 
+_ALIAS: dict = {}  # symbol as asked -> symbol Yahoo actually knows
+
+
+def _chart(sym: str, rng: str = "1d") -> dict:
+    """UAE stocks: Yahoo lists Dubai (DFM) as .AE and Abu Dhabi (ADX) as .AD. If one ending is
+    unknown, try the other and remember which worked."""
+    real = _ALIAS.get(sym, sym)
+    try:
+        return _yahoo_chart(real, rng)
+    except ValueError:
+        up = sym.upper()
+        if up.endswith((".AE", ".AD")) and real == sym:
+            other = sym[:-3] + (".AD" if up.endswith(".AE") else ".AE")
+            j = _yahoo_chart(other, rng)
+            _ALIAS[sym] = other
+            return j
+        raise
+
+
 def yahoo_history(symbol: str, rng: str = "1y") -> list[float]:
     """Daily (dividend-adjusted) closes, oldest first."""
-    j = _yahoo_chart(symbol.strip(), rng)
+    j = _chart(symbol.strip(), rng)
     res = (j.get("chart") or {}).get("result")
     if not res:
         raise ValueError("symbol not found")
@@ -97,7 +116,7 @@ def yahoo_history(symbol: str, rng: str = "1y") -> list[float]:
 def yahoo_quote(symbol: str) -> dict:
     sym = symbol.strip()
     real = METALS.get(sym.upper(), sym)
-    j = _yahoo_chart(real)
+    j = _chart(real)
     res = (j.get("chart") or {}).get("result")
     if not res:
         err = ((j.get("chart") or {}).get("error") or {}).get("description") or "symbol not found"
@@ -191,7 +210,7 @@ def holding_symbol(h: dict) -> str:
     if mk == "IN":
         return sym + (".BO" if ex == "BSE" else ".NS")
     if mk == "UAE":
-        return sym + ".AE"
+        return sym + (".AD" if ex == "ADX" else ".AE")
     return sym
 
 

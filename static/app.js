@@ -1,6 +1,6 @@
 /* Family Wealth — front-end (vanilla JS, no external network calls). */
 "use strict";
-const APP_VERSION = "1.12";
+const APP_VERSION = "1.13";
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -826,7 +826,7 @@ const FORMS = {
       ["currency", "Price currency", "select", { opts: curOpts(), def: M.currency }],
       ["owner", "Owner", "select", { opts: ownerOpts(), def: defOwner() }],
       ["sector", "Sector", "text"],
-      ["quote_symbol", "Yahoo symbol override", "text", { hint: mk === "IN" ? "Auto: SYMBOL.NS / .BO" : mk === "UAE" ? "Auto: SYMBOL.AE — override if a fetch fails" : "Auto: same as ticker" }],
+      ["quote_symbol", "Yahoo symbol override", "text", { hint: mk === "IN" ? "Auto: SYMBOL.NS / .BO" : mk === "UAE" ? "Auto: SYMBOL.AE for DFM, SYMBOL.AD for ADX — normally leave empty" : "Auto: same as ticker" }],
       ["goal_id", "Earmarked for goal", "select", { opts: goalOpts() }],
       ["notes", "Notes", "textarea", { full: true }],
     ];
