@@ -26,43 +26,41 @@ def http_json(url: str, timeout: int = 10):
 
 
 # ---------------------------------------------------------------- yahoo (rate-limit aware)
-import http.cookiejar
+import shutil
+import subprocess
 import threading
 import time
 import urllib.error
 
-_CJ = http.cookiejar.CookieJar()
-_YOPENER = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(_CJ))
+_CURL = shutil.which("curl")
 _YLOCK = threading.Lock()
 _Y = {"cookie_at": 0.0, "cooldown_until": 0.0}
 _CACHE: dict = {}          # (kind, symbol) -> (timestamp, quote)
 CACHE_TTL = 300            # never re-fetch the same symbol more than once per 5 minutes
-YAHOO_COOLDOWN = 600       # after a 429, leave Yahoo alone for 10 minutes
+YAHOO_COOLDOWN = 180       # after a 429, leave Yahoo alone for 3 minutes
 
 
 def _yget(url: str, timeout: int = 10):
-    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json,text/plain,*/*",
-                                               "Accept-Language": "en-US,en;q=0.9", "Referer": "https://finance.yahoo.com/"})
-    with _YOPENER.open(req, timeout=timeout) as r:
+    """Yahoo rejects Python's own HTTPS client on some networks (HTTP 429) while plain curl works,
+    so use the system curl when present. The URL is passed as a single argument — no shell involved."""
+    if _CURL:
+        p = subprocess.run([_CURL, "-s", "--max-time", str(timeout), "-A", "Mozilla/5.0", "-w", "\n%{http_code}", url],
+                           capture_output=True, text=True, timeout=timeout + 5)
+        body, _, code = p.stdout.rpartition("\n")
+        code = int(code) if code.strip().isdigit() else 0
+        if code == 200:
+            return json.loads(body)
+        if code == 0:
+            raise RuntimeError("no response from Yahoo (offline?)")
+        raise urllib.error.HTTPError(url, code, "HTTP error", {}, None)
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode())
-
-
-def _yahoo_session():
-    """Yahoo throttles cookie-less clients hard; pick up its consent cookie once an hour."""
-    with _YLOCK:
-        if time.time() - _Y["cookie_at"] < 3600:
-            return
-        try:
-            _YOPENER.open(urllib.request.Request("https://fc.yahoo.com", headers={"User-Agent": UA}), timeout=8)
-        except Exception:
-            pass  # fc.yahoo.com answers 404 but still sets the cookie
-        _Y["cookie_at"] = time.time()
 
 
 def _yahoo_chart(real: str, rng: str = "1d") -> dict:
     if time.time() < _Y["cooldown_until"]:
         raise RuntimeError("Yahoo rate-limited — auto-retry at " + time.strftime("%H:%M", time.localtime(_Y["cooldown_until"])))
-    _yahoo_session()
     last: Exception | None = None
     for host in ("query1", "query2"):
         for attempt in range(2):
@@ -81,7 +79,7 @@ def _yahoo_chart(real: str, rng: str = "1d") -> dict:
                 break
     if isinstance(last, urllib.error.HTTPError) and last.code == 429:
         _Y["cooldown_until"] = time.time() + YAHOO_COOLDOWN
-        raise RuntimeError("Yahoo rate-limited (429) — auto-retry in 10 min")
+        raise RuntimeError("Yahoo rate-limited (429) — auto-retry in 3 min")
     raise last or RuntimeError("no response")
 
 

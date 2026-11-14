@@ -1,6 +1,6 @@
 /* Family Wealth — front-end (vanilla JS, no external network calls). */
 "use strict";
-const APP_VERSION = "1.9";
+const APP_VERSION = "1.10";
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
