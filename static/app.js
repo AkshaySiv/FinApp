@@ -1,6 +1,6 @@
 /* Family Wealth — front-end (vanilla JS, no external network calls). */
 "use strict";
-const APP_VERSION = "1.14";
+const APP_VERSION = "1.15";
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -496,14 +496,14 @@ function viewStocks(mk) {
     const c = h.currency || ncur;
     const v = conv((h.qty || 0) * (h.price || h.avg_cost || 0), c, ncur), cost = conv((h.qty || 0) * (h.avg_cost || 0), c, ncur);
     tv += v; tc += cost;
-    if (h.prev_close) { day += conv((h.qty || 0) * (h.price - h.prev_close), c, ncur); dayBase += conv((h.qty || 0) * h.prev_close, c, ncur); }
+    if (h.prev_close && h.price) { day += conv((h.qty || 0) * (h.price - h.prev_close), c, ncur); dayBase += conv((h.qty || 0) * h.prev_close, c, ncur); }
     return { h, c, v, cost };
   }).sort((a, b) => b.v - a.v);
   const pnl = tv - tc;
   const syncedSyms = new Set(rows.filter((r) => r.source).map((r) => `${r.symbol}|${r.owner}`));
   const body = calc.map(({ h, c, v, cost }) => {
     const dup = !h.source && syncedSyms.has(`${h.symbol}|${h.owner}`);
-    const p = v - cost, dp = h.prev_close ? (h.price - h.prev_close) / h.prev_close : null;
+    const p = v - cost, dp = h.prev_close && h.price ? (h.price - h.prev_close) / h.prev_close : null;
     return `<tr><td><div style="font-weight:600">${esc(h.symbol)}${h.source ? ` <span class="tag sync" title="Synced from ${esc(h.source_label || "broker")}">⇆ ${esc((h.source_label || "").split(" · ")[0])}</span>` : ""}</div><div class="muted" style="font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis">${dup ? `<span class="down">⚠ also synced from broker — delete this manual entry</span>` : esc(h.name || "")}</div></td>
       <td><span class="tag">${esc(h.exchange || "")}</span></td><td>${ownerChip(h.owner)}</td>
       <td class="num">${numf(h.qty, 4)}</td><td class="num">${fmt(h.avg_cost, c, { dp: 2 })}</td>
@@ -938,7 +938,7 @@ function wireForm(coll, item) {
     const r = await api(url).catch((e) => ({ ok: false, error: e.message }));
     if (r.ok) {
       out.innerHTML = `✓ ${r.looked_up && b.dataset.check === "holding" ? esc(r.looked_up) + " · " : ""}${esc(r.name)} · <b>${r.ccy} ${numf(r.price, 4)}</b>${r.nav_date ? ` (NAV ${esc(r.nav_date)})` : ""}`;
-      if (b.dataset.check === "holding" && form.elements.price && !item) form.elements.price.value = +r.price.toFixed(4);
+      if (b.dataset.check === "holding" && form.elements.price) form.elements.price.value = +r.price.toFixed(4);
       out.className = "hint check-out up";
       if (form.elements.name && !form.elements.name.value && !["XAU", "XAG"].includes(input.value.trim().toUpperCase())) form.elements.name.value = r.name;
       if (form.elements.currency && ["AED", "INR", "USD"].includes(r.ccy) && !item && coll === "assets" && b.dataset.check === "nav") form.elements.currency.value = r.ccy;

@@ -92,6 +92,8 @@ def clean(coll: str, payload: dict) -> dict:
         raise HTTPException(400, "currency must be AED, INR or USD")
     if coll == "holdings" and out.get("symbol"):
         out["symbol"] = out["symbol"].strip().upper()
+    if coll == "holdings" and "price" in out and not out["price"]:
+        out.pop("price")  # an empty price box must never wipe a fetched price
     return out
 
 
