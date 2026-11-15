@@ -274,6 +274,14 @@ def _quote_uncached(kind: str, sym: str) -> dict:
     return yahoo_quote(sym)
 
 
+def asset_symbol(a: dict) -> str:
+    """Crypto saved as a bare coin code ("BTC") means the coin, never the US-listed fund of the same ticker."""
+    s = (a.get("symbol") or "").strip()
+    if s and a.get("asset_class") == "crypto" and a.get("method") == "market" and "-" not in s:
+        return s.upper() + "-USD"
+    return s
+
+
 def quote(kind: str, sym: str, fresh: bool = False) -> dict:
     key = (kind, sym.strip().upper())
     hit = _CACHE.get(key)
@@ -297,7 +305,7 @@ def collect(data: dict, market: str | None = None, skip_sources: set | None = No
             jobs.add(("yahoo", holding_symbol(h)))
     if not market:
         for a in data.get("assets", []):
-            m, s = a.get("method"), (a.get("symbol") or "").strip()
+            m, s = a.get("method"), asset_symbol(a)
             if s and m == "market":
                 jobs.add(("yahoo", s))
             elif s and m == "nav":
@@ -369,7 +377,7 @@ def apply(data: dict, res: dict, skip_sources: set | None = None) -> dict:
             failed.append(job[1])
 
     for a in data.get("assets", []):
-        m, s = a.get("method"), (a.get("symbol") or "").strip()
+        m, s = a.get("method"), asset_symbol(a)
         if m not in ("market", "nav") or not s:
             continue
         job = ("nav" if m == "nav" else "yahoo", s)

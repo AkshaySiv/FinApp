@@ -1,6 +1,6 @@
 /* Family Wealth — front-end (vanilla JS, no external network calls). */
 "use strict";
-const APP_VERSION = "1.17";
+const APP_VERSION = "1.18";
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -787,14 +787,14 @@ const FORMS = {
     return [
       ["name", "Name", "text", { req: true, ph: "e.g. SBI FD, 22K gold jewellery, Parag Parikh Flexi Cap", full: true }],
       ["asset_class", "Asset class", "select", { opts: Object.entries(state.meta.asset_classes).filter(([k]) => !k.startsWith("stocks_")) }],
-      ["method", "How is it valued?", "select", { opts: Object.entries(state.meta.valuation_methods), def: "manual" }],
+      ["method", "How is it valued?", "select", { opts: Object.entries(state.meta.valuation_methods).filter(([k]) => k !== "broker"), def: "manual" }],
       ["owner", "Owner", "select", { opts: ownerOpts(), def: defOwner() }],
       ["currency", "Currency", "select", { opts: curOpts(), def: state.cur }],
       // manual
       ["value", "Current value", "number", { show: MAN, creq: true }],
       // market
       ["symbol", "Symbol", "text", { show: M, creq: true, ph: "XAU, XAG, BTC-USD, VOO …", check: "market",
-        hint: "XAU = gold / gram · XAG = silver / gram · crypto like BTC-USD, ETH-USD · any Yahoo Finance ticker" }],
+        hint: "Gold: XAU (per gram) · Silver: XAG · Crypto: BTC, ETH, SOL … · or any Yahoo Finance ticker. Click Check to confirm." }],
       ["units", "Quantity", "number", { show: [...M, ...NAV], creq: true, hint: "grams for gold/silver · units for funds · coins for crypto" }],
       ["purity", "Gold purity (karat)", "select", { show: M, opts: [["24", "24K"], ["22", "22K"], ["21", "21K"], ["18", "18K"]], def: "24", hint: "Only used for XAU" }],
       ["premium_pct", "Premium / discount %", "number", { show: M, step: "0.1", hint: "e.g. +9 for Indian retail gold (duty + GST)" }],
@@ -892,6 +892,8 @@ function openForm(coll, item = null, extra = {}) {
     const body = Object.fromEntries(new FormData(form));
     if (coll === "holdings") body.market = mk;
     if (coll === "assets") {
+      form._normSym?.();
+      body.symbol = form.elements.symbol.value;
       if (body.method === "nav") body.symbol = body.nav_symbol;
       delete body.nav_symbol;
       $$(".field[data-show]", form).forEach((f) => { if (f.style.display === "none") { const el = $("[name]", f); if (el && el.name !== "nav_symbol" && !(el.name === "symbol" && body.method === "nav")) delete body[el.name]; } });
@@ -918,8 +920,24 @@ function wireForm(coll, item) {
   const toggle = () => {
     if (!method) return;
     $$(".field[data-show]", form).forEach((f) => { f.style.display = f.dataset.show.split(",").includes(method.value) ? "" : "none"; });
-    if (method.value === "market" && form.elements.asset_class.value === "gold" && !form.elements.symbol.value) form.elements.symbol.value = "XAU";
+    const cls = form.elements.asset_class.value, symEl = form.elements.symbol;
+    if (method.value === "market") {
+      if (cls === "gold" && !symEl.value) symEl.value = "XAU";
+      if (cls !== "gold" && !item && ["XAU", "XAG"].includes(symEl.value.trim().toUpperCase())) symEl.value = "";
+      const metal = symEl.value.trim().toUpperCase();
+      // gold-only boxes: karat applies to XAU, premium to XAU / XAG
+      form.elements.purity.closest(".field").style.display = metal === "XAU" ? "" : "none";
+      form.elements.premium_pct.closest(".field").style.display = ["XAU", "XAG"].includes(metal) ? "" : "none";
+      symEl.placeholder = cls === "crypto" ? "BTC, ETH, SOL …" : cls === "gold" ? "XAU or XAG" : "XAU, XAG, BTC-USD, VOO …";
+    }
   };
+  const normSym = () => {  // crypto: plain "BTC" is a US-listed fund on Yahoo, not Bitcoin — always use the coin pair
+    if (!method || method.value !== "market" || form.elements.asset_class.value !== "crypto") return;
+    const el = form.elements.symbol, v = el.value.trim().toUpperCase();
+    if (v && !v.includes("-")) el.value = `${v}-USD`; else el.value = v;
+  };
+  form._normSym = normSym;
+  if (method && form.elements.symbol) form.elements.symbol.addEventListener("change", () => { normSym(); toggle(); });
   if (method) {
     method.addEventListener("change", toggle);
     form.elements.asset_class.addEventListener("change", () => {
@@ -933,6 +951,7 @@ function wireForm(coll, item) {
   }
   // live "Check" buttons
   $$("[data-check]", form).forEach((b) => b.addEventListener("click", async () => {
+    if (b.dataset.for === "symbol") { normSym(); toggle(); }
     const input = form.elements[b.dataset.for], out = $(`[data-out="${b.dataset.for}"]`, form);
     if (!input.value) return;
     out.textContent = "Checking…"; out.className = "hint check-out";

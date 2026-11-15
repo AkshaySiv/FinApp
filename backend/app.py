@@ -92,6 +92,9 @@ def clean(coll: str, payload: dict) -> dict:
         raise HTTPException(400, "currency must be AED, INR or USD")
     if coll == "holdings" and out.get("symbol"):
         out["symbol"] = out["symbol"].strip().upper()
+    if coll == "assets" and out.get("asset_class") == "crypto" and out.get("method") == "market" and out.get("symbol"):
+        sym = out["symbol"].strip().upper()
+        out["symbol"] = sym if "-" in sym else f"{sym}-USD"  # bare "BTC" on Yahoo is an ETF, not Bitcoin
     if coll == "holdings" and "price" in out and not out["price"]:
         out.pop("price")  # an empty price box must never wipe a fetched price
     return out
