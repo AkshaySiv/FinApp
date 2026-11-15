@@ -1,6 +1,6 @@
 /* Family Wealth — front-end (vanilla JS, no external network calls). */
 "use strict";
-const APP_VERSION = "1.18";
+const APP_VERSION = "1.19";
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -811,7 +811,8 @@ const FORMS = {
       ["base_date", "Reference date", "date", { show: APP, creq: true }],
       ["growth_pct", "Yearly change %", "number", { show: APP, step: "0.1", def: 5, hint: "+5 for property · −15 for a car" }],
       // common
-      ["invested", "Amount invested (optional)", "number", { hint: "Cost basis, to show gain" }],
+      ["avg_price", "Average buy price per unit", "number", { show: [...M, ...NAV], step: "any", hint: "Price you paid per coin / gram / unit. Fills Amount invested for you." }],
+      ["invested", "Amount invested (optional)", "number", { hint: "Total you paid, in the currency chosen here. Used to show profit or loss." }],
       ["institution", "Bank / institution", "text"],
       ["goal_id", "Earmarked for goal", "select", { opts: goalOpts() }],
       ["notes", "Notes", "textarea", { full: true }],
@@ -937,6 +938,13 @@ function wireForm(coll, item) {
     if (v && !v.includes("-")) el.value = `${v}-USD`; else el.value = v;
   };
   form._normSym = normSym;
+  const avg = form.elements.avg_price, units = form.elements.units, inv = form.elements.invested;
+  if (avg && units && inv) {
+    if (item && +item.invested > 0 && +item.units > 0) avg.value = +(item.invested / item.units).toFixed(6);
+    const fill = () => { if (+avg.value > 0 && +units.value > 0) inv.value = +(avg.value * units.value).toFixed(2); };
+    avg.addEventListener("input", fill);
+    units.addEventListener("input", fill);
+  }
   if (method && form.elements.symbol) form.elements.symbol.addEventListener("change", () => { normSym(); toggle(); });
   if (method) {
     method.addEventListener("change", toggle);
