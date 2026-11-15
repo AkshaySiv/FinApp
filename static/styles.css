@@ -258,3 +258,5 @@ code.copy:hover { outline: 1px solid var(--accent); }
 .verdict { padding: 10px 14px; border-radius: 10px; font-weight: 620; background: var(--surface-2); border: 1px solid var(--border); }
 .verdict.ok { color: var(--good-text); } .verdict.warn { color: #c98500; } .verdict.err { color: var(--critical); }
 .reasons { list-style: none; padding: 0; margin: 12px 0; font-size: 13px; } .reasons li { padding: 3px 0; }
+
+.banner.info { background: var(--surface-2); border-color: var(--border); color: var(--text-secondary); }

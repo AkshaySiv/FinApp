@@ -144,6 +144,9 @@ def run_refresh(market: str | None = None) -> dict:
             synced = sync_all(auto=True)
             STATE["last_broker_sync"] = time.time()
             stats = {**stats, "broker": [{k: r.get(k) for k in ("ok", "stocks", "funds", "error")} for r in synced]}
+            with vault.lock:
+                if vault.unlocked and broker_priced_sources() != skip:
+                    STATE["pending"] = True  # a broker session just ended: price its holdings from market data right away
         return stats
     finally:
         STATE["refreshing"] = False

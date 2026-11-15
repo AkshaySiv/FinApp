@@ -1,6 +1,6 @@
 /* Family Wealth — front-end (vanilla JS, no external network calls). */
 "use strict";
-const APP_VERSION = "1.16";
+const APP_VERSION = "1.17";
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -257,10 +257,12 @@ function flashFromHash() {
   if (q.get("ok") || q.get("err")) history.replaceState(null, "", "#" + state.view);
 }
 function brokerBanner() {
+  const today = new Date().toISOString().slice(0, 10);
   const need = (state.data.connections || []).filter((c) => c.status === "login_required" || (c.status === "new" && !c.logged_in));
-  if (!need.length || state.view === "brokers") return "";
-  return `<div class="banner">⇆ <span>${need.map((c) => `<b>${c.broker === "zerodha" ? "Zerodha" : "Fyers"}${c.label ? " · " + esc(c.label) : ""}</b>`).join(", ")} ${need.length > 1 ? "need" : "needs"} a login to sync holdings.</span>
-    ${need.map((c) => `<button class="btn sm primary" data-login="${c.id}">Log in ${c.broker === "zerodha" ? "Zerodha" : "Fyers"}${need.length > 1 && c.label ? " (" + esc(c.label) + ")" : ""}</button>`).join("")}</div>`;
+  if (!need.length || state.view === "brokers" || localStorage.getItem("fw_banner_hide") === today) return "";
+  const nm = (c) => `${c.broker === "zerodha" ? "Zerodha" : "Fyers"}${c.label ? " · " + esc(c.label) : ""}`;
+  return `<div class="banner info">⇆ <span>Prices for your synced stocks and funds keep updating from market data. The daily broker session for ${need.map((c) => `<b>${nm(c)}</b>`).join(" and ")} has ended, so log in only when you have bought or sold something.</span>
+    ${need.map((c) => `<button class="btn sm" data-login="${c.id}">Log in ${nm(c)}</button>`).join("")}<button class="btn sm ghost" id="banner-hide">Hide for today</button></div>`;
 }
 
 function renderView() {
@@ -273,6 +275,7 @@ function renderView() {
   const view = $("#view");
   if (v.startsWith("stocks-")) { view.innerHTML = brokerBanner() + viewStocks(v.split("-")[1]); afterStocks(v.split("-")[1]); }
   else { view.innerHTML = brokerBanner() + VIEWS[v].render(); VIEWS[v].after?.(); }
+  $("#banner-hide")?.addEventListener("click", () => { localStorage.setItem("fw_banner_hide", new Date().toISOString().slice(0, 10)); renderView(); });
 }
 
 // ------------------------------------------------------------------ chart helpers
@@ -521,7 +524,7 @@ function viewStocks(mk) {
       ${kpi("Today", dayBase ? `<span class="${signCls(day)}">${fmt(day, ncur)}</span>` : "—", dayBase ? `<span class="${signCls(day)}">${pct(day / dayBase, 2)}</span>` : "refresh prices to see")}
       ${kpi("Holdings", rows.length, `${[...new Set(rows.map((r) => r.exchange))].filter(Boolean).join(" · ") || M.exchanges.join(" · ")}`)}
     </div>
-    <div class="toolbar" style="margin-top:16px"><span class="muted">${mk === "IN" && rows.some((r) => r.source) ? "⇆ Broker-synced stocks are priced by your broker (Zerodha/Fyers); others" : "Prices"} refresh automatically${mk === "IN" && rows.some((r) => r.source) ? "" : " (delayed quotes, Yahoo Finance)"}. ⚠ means a price couldn't be fetched — hover it for the reason.</span><div class="spacer"></div>
+    <div class="toolbar" style="margin-top:16px"><span class="muted">${mk === "IN" && rows.some((r) => r.source) ? "⇆ Broker-synced stocks use your broker's prices while its session is live, then market data; all prices" : "Prices"} refresh automatically${mk === "IN" && rows.some((r) => r.source) ? "" : " (delayed quotes, Yahoo Finance)"}. ⚠ means a price couldn't be fetched — hover it for the reason.</span><div class="spacer"></div>
       <button class="btn" data-act="refresh-prices" data-market="${mk}">↻ Refresh prices</button><button class="btn primary" data-act="add-holding" data-market="${mk}">+ Add holding</button></div>
     <div class="card">${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Symbol</th><th>Exch.</th><th>Owner</th><th class="num">Qty</th><th class="num">Avg cost</th><th class="num">LTP</th><th class="num">Day</th><th class="num">Invested</th><th class="num">Value</th><th class="num">P&amp;L</th><th class="num">Weight</th><th></th></tr></thead><tbody>${body}</tbody>
         <tfoot><tr><td colspan="7">Total · ${rows.length} holding(s)</td><td class="num">${fmt(tc, ncur)}</td><td class="num">${fmt(tv, ncur)}</td><td class="num ${signCls(pnl)}">${fmt(pnl, ncur)}</td><td class="num">100%</td><td></td></tr></tfoot></table></div>`

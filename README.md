@@ -68,7 +68,7 @@ Open **Broker Sync** in the sidebar. Stocks go to **Indian Stocks** and mutual f
 | App to create | developers.kite.trade → **Personal** app (free) | myapi.fyers.in → Create App (free) |
 | Redirect URL to register | `http://127.0.0.1:8765/connect/zerodha` | `http://127.0.0.1:8765/connect/fyers` |
 | What syncs | Demat stocks and ETFs; Coin mutual funds (if Zerodha's free app allows it) | Stocks and ETFs; mutual funds held in demat |
-| Daily login? | **Yes.** Sessions end around 6 AM IST; tap **Log in** on the banner once a day | **No**, if you save your PIN: the session renews itself for about 15 days |
+| Daily login? | Only to pick up buys and sells. Sessions end around 6 AM IST; prices keep updating from market data without it | **No**, if you save your PIN: the session renews itself for about 15 days |
 
 - **Mutual fund prices:** each fund is matched to its AMFI scheme code, so its NAV keeps updating daily even after the broker session ends.
 - **Sold holdings:** removed from the app on the next sync.
