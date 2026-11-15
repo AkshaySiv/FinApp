@@ -38,16 +38,18 @@ function currencyRows(s) {
       const s = state.summary, t = s.totals, cur = state.cur, hist = s.history;
       const first = hist.length > 1 ? hist[0] : null, change = first ? t.net_worth - first.net_worth : null;
       const who = state.who === "family" ? "Family" : esc(memberName(state.who));
+      const tone = (x) => (x > 0.5 ? "hero-up" : x < -0.5 ? "hero-down" : "");
+      const signed = (x, txt) => `<span class="${tone(x)}">${x >= 0 ? "▲" : "▼"} ${txt}</span>`;
       const stat = (l, v, sub = "") => `<div><div class="hero-l">${l}</div><div class="hero-v">${v}</div><div class="hero-s">${sub}</div></div>`;
       return `
       <div class="hero-card">
         <div class="hero-top"><div><div class="hero-l">NET WORTH · ${who.toUpperCase()}</div><div class="hero-big">${fmt(t.net_worth)}</div>
-          <div class="hero-s">${change != null ? `${change >= 0 ? "▲" : "▼"} ${fmt(Math.abs(change), cur, { compact: true })} since ${fmtDate(first.date)}` : `Shown in ${cur}. Switch currency or person at the top.`}</div></div></div>
+          <div class="hero-s">${change != null ? `${signed(change, fmt(Math.abs(change), cur, { compact: true }))} since ${fmtDate(first.date)}` : `Shown in ${cur}. Switch currency or person at the top.`}</div></div></div>
         <div class="hero-stats">
           ${stat("Assets", fmt(t.assets, cur, { compact: true }), `${s.by_class.reduce((a, c) => a + c.count, 0)} items`)}
           ${stat("Liabilities", fmt(t.liabilities, cur, { compact: true }), `${(t.debt_ratio * 100).toFixed(0)}% of assets`)}
-          ${stat("Total gain", `${t.gain >= 0 ? "▲" : "▼"} ${fmt(Math.abs(t.gain), cur, { compact: true })}`, `on ${fmt(t.invested, cur, { compact: true })} invested`)}
-          ${stat("Equity P&amp;L", `${t.equity_pnl >= 0 ? "▲" : "▼"} ${fmt(Math.abs(t.equity_pnl), cur, { compact: true })}`, `${pct(t.equity_pnl_pct)} · stocks + funds`)}
+          ${stat("Total gain", signed(t.gain, fmt(Math.abs(t.gain), cur, { compact: true })), `on ${fmt(t.invested, cur, { compact: true })} invested`)}
+          ${stat("Equity P&amp;L", signed(t.equity_pnl, fmt(Math.abs(t.equity_pnl), cur, { compact: true })), `<span class="${tone(t.equity_pnl)}">${pct(t.equity_pnl_pct)}</span> · stocks + funds`)}
           ${stat("Monthly EMI", fmt(t.monthly_emi, cur, { compact: true }), `${s.loans.filter((l) => l.active).length} active loan(s)`)}
         </div>
       </div>
