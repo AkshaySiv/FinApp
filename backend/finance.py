@@ -253,6 +253,9 @@ def summarize(data: dict, cur: str, who: str = "family") -> dict:
     C = lambda amt, frm: convert(amt, frm, cur, fx)
 
     by_class: dict[str, float] = {k: 0.0 for k in ASSET_CLASSES}
+    class_cost: dict[str, float] = {k: 0.0 for k in ASSET_CLASSES}
+    class_count: dict[str, int] = {k: 0 for k in ASSET_CLASSES}
+    liab_ccy = {c: 0.0 for c in CURRENCIES}
     by_currency = {c: 0.0 for c in CURRENCIES}
     member_assets = {m["id"]: 0.0 for m in members}
     member_liab = {m["id"]: 0.0 for m in members}
@@ -272,6 +275,8 @@ def summarize(data: dict, cur: str, who: str = "family") -> dict:
             return 0.0, 0.0
         vv, cc = C(v, ccy) * s, C(c, ccy) * s
         by_class[cls] = by_class.get(cls, 0.0) + vv
+        class_cost[cls] = class_cost.get(cls, 0.0) + cc
+        class_count[cls] = class_count.get(cls, 0) + 1
         by_currency[ccy] = by_currency.get(ccy, 0.0) + vv
         total_cost += cc
         if item.get("goal_id"):
@@ -309,6 +314,7 @@ def summarize(data: dict, cur: str, who: str = "family") -> dict:
         out_c = C(st["outstanding"], ccy) * s
         emi_c = C(st["emi"], ccy) * s if st["active"] else 0.0
         liabilities += out_c
+        liab_ccy[ccy] = liab_ccy.get(ccy, 0.0) + out_c
         monthly_emi += emi_c
         row = {**ln, **st, "outstanding_conv": out_c, "emi_conv": emi_c, "owner_name": names.get(owner, "Joint"),
                "type_label": LOAN_TYPES.get(ln.get("loan_type"), "Loan")}
@@ -367,8 +373,9 @@ def summarize(data: dict, cur: str, who: str = "family") -> dict:
                   + [{"key": "MF", "label": "Mutual Funds", "value": mf["value"], "cost": mf["cost"],
                       "pnl": mf["value"] - mf["cost"], "pnl_pct": (mf["value"] / mf["cost"] - 1) if mf["cost"] else 0.0,
                       "count": mf["count"], "nav": "assets"}],
-        "by_class": [{"key": k, "label": ASSET_CLASSES[k], "value": v} for k, v in by_class.items() if v > 0.005],
-        "by_currency": [{"currency": k, "value": v} for k, v in by_currency.items()],
+        "by_class": [{"key": k, "label": ASSET_CLASSES[k], "value": v, "cost": class_cost.get(k, 0.0),
+                      "count": class_count.get(k, 0)} for k, v in by_class.items() if v > 0.005],
+        "by_currency": [{"currency": k, "value": v, "liabilities": liab_ccy.get(k, 0.0)} for k, v in by_currency.items()],
         "by_member": [{"id": m["id"], "name": m["name"], "assets": member_assets.get(m["id"], 0.0),
                        "liabilities": member_liab.get(m["id"], 0.0),
                        "net": member_assets.get(m["id"], 0.0) - member_liab.get(m["id"], 0.0)} for m in members],

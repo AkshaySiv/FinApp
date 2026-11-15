@@ -1,6 +1,6 @@
 /* Family Wealth — front-end (vanilla JS, no external network calls). */
 "use strict";
-const APP_VERSION = "1.19";
+const APP_VERSION = "1.20";
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -196,7 +196,7 @@ function updateRefreshBadge() {
 // ------------------------------------------------------------------ shell
 const NAV = [
   ["Overview", [["dashboard", "◧", "Dashboard"], ["insights", "◈", "Insights"], ["advisor", "✦", "AI Advisor"], ["family", "◎", "Family"]]],
-  ["Wealth", [["equity", "◩", "Equity"], ["assets", "▤", "Assets"], ["stocks-IN", "₹", "Indian Stocks"], ["stocks-US", "$", "US Stocks"], ["stocks-UAE", "د", "UAE Stocks"], ["brokers", "⇆", "Broker Sync"]]],
+  ["Wealth", [["assets", "▤", "Assets"], ["equity", "◩", "Equity"], ["brokers", "⇆", "Broker Sync"]]],
   ["Planning", [["loans", "⇄", "Loans & EMI"], ["goals", "◆", "Goals"]]],
   ["", [["settings", "⚙", "Settings"]]],
 ];
@@ -268,6 +268,8 @@ function brokerBanner() {
 function renderView() {
   destroyCharts();
   flashFromHash();
+  const smk = state.view.startsWith("stocks-") ? state.meta.markets[state.view.split("-")[1]] : null;
+  if (smk) { state.assetFilter = smk.cls; state.view = "assets"; history.replaceState(null, "", "#assets"); }  // stock pages now live inside Assets
   const v = TITLES[state.view] ? state.view : "dashboard";
   $("#page-title").textContent = TITLES[v];
   $$(".nav-item").forEach((b) => b.classList.toggle("active", b.dataset.nav === v));
